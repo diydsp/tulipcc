@@ -75,6 +75,7 @@ for y in range(1,HEIGHT):
 
 
 d = {   "x":0.0, "y":0,
+        "time_disp_start":0.0,
         "run":1}
 
 
@@ -216,6 +217,7 @@ XPOS_PUSH_SCALE = 8
 YPOS_PUSH_SCALE = 8
 NEW_NOTE_BUTTON1 = 6
 NEW_NOTE_BUTTON2 = 0
+KNOB_TIME_JOG = 5
 
 # This is called every frame by the GPU.
 def game_loop(d):
@@ -269,6 +271,18 @@ def game_loop(d):
         f_x = math.floor( clip( float(f_x) - rabbit_w/2, 0, WIDTH-rabbit_w) )
         f_y = math.floor( clip( float(f_y) - rabbit_h/2, 0, HEIGHT-rabbit_h) ) 
         tulip.sprite_move(0, f_x, f_y)
+
+        # time jog
+        jog = enc.read_increment(KNOB_TIME_JOG)
+        if jog != 0:
+            d["time_disp_start"] += jog
+            print(f"jog: {jog} type: {type(jog)}")  
+            cx,cy = grid.get_coords(d["x"], d["y"])
+            for row in range(grid.VerticalSpacing):
+                tulip.bg_scroll_x_offset(math.floor( cy+row), math.floor( d["time_disp_start"]) )
+
+
+
 
     if keeb_mgr.note_add_down_get() == True and \
         enc_butts[NEW_NOTE_BUTTON1] == 0 and enc_butts[NEW_NOTE_BUTTON2] == 0:
