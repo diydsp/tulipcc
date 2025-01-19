@@ -8,7 +8,8 @@ e.g. drum grid, piano roll
 """
                
 class Grid():
-    def __init__(self, width, height, cols, rows, start_x, start_y, palette_index):
+    def __init__(self, start_x, start_y, width, height, palette_index,
+                 cols=32, rows=25, visible_quarter_notes=4,seq_ppq=48):
         self.width = width
         self.height = height
         self.cols = cols
@@ -16,6 +17,8 @@ class Grid():
         self.start_x = start_x
         self.start_y = start_y
         self.palette_index = palette_index
+        self.visible_quarter_notes = visible_quarter_notes
+        self.pulses_seen_in_grid = seq_ppq * self.visible_quarter_notes
 
         # compute grid spacing
         self.VerticalSpacing = self.height/self.rows
@@ -49,4 +52,9 @@ class Grid():
 
     def specs_get(self):
         return self.start_x, self.start_y, self.HorizontalSpacing, self.VerticalSpacing
+    
+    def get_coords(self, pulse, row):
+        x = self.start_x + ( pulse / self.pulses_seen_in_grid ) * self.width
+        y = self.start_y + row * self.VerticalSpacing
+        return x,y
     

@@ -8,6 +8,23 @@ import gridfun as gfun
 note: screen size 1024x600, with rabbit: 975x568
 """
 
+def clip(val, min_val, max_val):
+    return max(min(val, max_val), min_val)
+
+def wrap(val, min_val, max_val):
+    if val < min_val:
+        return max_val
+    elif val > max_val:
+        return min_val
+    else:
+        return val
+
+def round_half_up(n):
+    if n > 0:
+        return math.floor(n + 0.5)
+    else:
+        return math.ceil(n - 0.5)
+        
 # initialize
 tulip.tfb_stop()
 pix_dir = "pix"
@@ -18,8 +35,30 @@ grass_colors = [80, 157, 180, 249]
 
 # clear the screen
 tulip.bg_clear(random.choice(grass_colors))
-tulip.bg_str("LOADING...", 0, math.floor(HEIGHT/2), 0, 2)
 
+
+# display UI hints
+hints = {
+    "[ H. Pos. ]",
+    "[ H. Sel. / Add Bt. ] ",
+    "[ Duration ] ",
+    "[ Timing ] ",
+
+    "[ Row ] ",
+    "[ Velocity ] ",
+    "[ V. Sel. / Add Bt. ] ",
+    "[ V. Pos. ]",
+}
+
+hint_x = 25
+hint_y = 550
+hint_color = 0
+hint_h_spacing = 920 / (len(hints)-1)
+hint_h_spacing = 100
+for hint_num, hint in enumerate(hints):
+    hx = math.floor( clip( hint_x + hint_num * hint_h_spacing, 0, WIDTH-1) )
+    hy = math.floor( clip( hint_y, 0, HEIGHT-1) ) 
+    tulip.bg_str(hint, hx, hy, hint_color, 2)
 
 # Load the rabbit sprite frames into sprite RAM
 (rabbit_w, rabbit_h) = (48, 32)
@@ -35,8 +74,101 @@ for y in range(1,HEIGHT):
     tulip.bg_blit(x_start,0,0,1,0,y)   
 
 
-d = {   "x":math.floor(WIDTH/2), "y":math.floor(HEIGHT/2),
+d = {   "x":0.0, "y":0,
         "run":1}
+
+
+class Note():
+    def __init__(self, pos, note, vel, dur):
+        self.pos = pos
+        self.note = note
+        self.vel = vel
+        self.dur = dur
+
+    def __repr__(self):
+        return f"Note: {self.note} at {self.pos} with vel {self.vel} for {self.dur} ticks\n"
+
+
+class NoteManager():
+    def __init__(self):
+        self.notes = []
+        self.note_index = 1
+
+    def add(self, grid, pos, note, vel, dur):
+        
+        # store in data struct
+        new_note = Note(pos, note, vel, dur)
+        self.notes.append(new_note)
+        
+        # write into sequencer
+        self.note_index += 1
+        amy.send(voices=1, note=note, vel=vel, sequence= "%d,%d,%d" % (pos, grid.pulses_seen_in_grid, self.note_index) )
+        
+        #amy.send(voices=1, note=note, vel=.5, sequence= "%d,%d,%d" % (0, amy.SEQUENCER_PPQ*4, 999) )
+
+
+    def display_notes(self):
+        print(self.notes)
+
+class EncVal():
+    def __init__(self):
+        self.prev = [0] * 8
+        enc.read_all_increments()  # clear out values
+
+    def set(self, idx, val):
+        self.prev[idx] = val
+
+    def get(self):
+        return self.prv_pos
+    
+
+
+class KeebMgr():
+    def __init__(self):
+        self.note_add_down=False
+
+    def note_add_down_get(self):
+        return self.note_add_down
+
+    def note_add_down_set(self, val):
+        self.note_add_down = val    
+
+
+class Cursor():
+    def __init__(self):
+        self.x = 0
+        self.y = 0
+        self.out_x = 0
+        self.out_y = 0
+
+    def delta_x(self, dx):
+
+        if dx != 0:
+            self.x += dx
+
+            val = round_half_up( self.x / 2 )
+            if val != self.out_x:            
+                delta = val - self.out_x
+                self.out_x = val 
+                return delta
+            else:
+                return 0
+        else:
+            return 0
+        
+    def delta_y(self, dy):
+            if dy != 0:
+                self.y += dy
+                val = round_half_up( self.y / 2 )
+                if val != self.out_y:            
+                    delta = val - self.out_y
+                    self.out_y = val 
+                    return delta
+                else:
+                    return 0
+            else:
+                return 0
+
 
 half_rabbit_w = math.floor(rabbit_w / 2)
 half_rabbit_h = math.floor(rabbit_h / 2)
@@ -53,66 +185,13 @@ tulip.sprite_register(1,0, rabbit_w, rabbit_h)
 tulip.sprite_move(1, math.floor(WIDTH/2) - half_rabbit_w, 0)
 tulip.sprite_on(1)
 
-class Note():
-    def __init__(self, pos, note, vel, dur):
-        self.pos = pos
-        self.note = note
-        self.vel = vel
-        self.dur = dur
-
-    def __repr__(self):
-        return f"Note: {self.note} at {self.pos} with vel {self.vel} for {self.dur} ticks\n"
-
-
-class NoteManager():
-    def __init__(self):
-        self.notes = []
-        
-    def add(self, pos, note, vel, dur):
-        new_note = Note(pos, note, vel, dur)
-        self.notes.append(new_note)
-    
-    def display_notes(self):
-        print(self.notes)
-
-class EncVal():
-    def __init__(self):
-        self.prev = [0] * 8
-        enc.read_all_increments()  # clear out values
-
-    def set(self, idx, val):
-        self.prev[idx] = val
-
-    def get(self):
-        return self.prv_pos
-    
-
-def clip(val, min_val, max_val):
-    return max(min(val, max_val), min_val)
-
-class KeebMgr():
-    def __init__(self):
-        self.note_add_down=False
-
-    def note_add_down_get(self):
-        return self.note_add_down
-
-    def note_add_down_set(self, val):
-        self.note_add_down = val    
-
-KNOB_XPOS = 7
-KNOB_YPOS = 0
-XPOS_PUSH_SCALE = 8
-YPOS_PUSH_SCALE = 8
-NEW_NOTE_BUTTON1 = 6
-NEW_NOTE_BUTTON2 = 1
-
-
 
 note_manager = NoteManager()
 keeb_mgr = KeebMgr()    
-grid = gfun.Grid(800, 500, cols=32,  rows=25, start_x=100, start_y=50, palette_index=3) 
+grid = gfun.Grid(start_x=200, start_y=50, width=500, height=500, palette_index=3,
+                 cols=32,  rows=25, visible_quarter_notes=4,seq_ppq=amy.SEQUENCER_PPQ) 
 grid.draw()
+cursor = Cursor()
 
 def beat_callback(t):
     global app
@@ -131,6 +210,13 @@ def beat_callback(t):
     tulip.sprite_move(1, math.floor(sprite_x), math.floor(sprite_y)) # later add bg scroll, how cool would that be
 
     
+KNOB_XPOS = 7
+KNOB_YPOS = 0
+XPOS_PUSH_SCALE = 8
+YPOS_PUSH_SCALE = 8
+NEW_NOTE_BUTTON1 = 6
+NEW_NOTE_BUTTON2 = 0
+
 # This is called every frame by the GPU.
 def game_loop(d):
 
@@ -144,23 +230,44 @@ def game_loop(d):
 
     elif keeb_mgr.note_add_down_get() == False and \
             ( enc_butts[NEW_NOTE_BUTTON1] == 1 or enc_butts[NEW_NOTE_BUTTON2] == 1):
-            tulip.bg_circle(math.floor( d["x"] + rabbit_w/2), 
-                            math.floor( d["y"] + rabbit_h/2), 10, 1, 1)  
+
+            # Add a note
+            f_x, f_y = grid.get_coords(d["x"], d["y"])
+            f_x = math.floor( clip( float(f_x) - rabbit_w/2, 0, WIDTH-rabbit_w) )
+            f_y = math.floor( clip( float(f_y) - rabbit_h/2, 0, HEIGHT-rabbit_h) ) 
+            tulip.bg_circle(f_x, f_y, 10, 1, 1)  
             keeb_mgr.note_add_down_set(True)
-            note_manager.add(d["x"], d["y"], 0.5, 12 ) 
+            note_manager.add( grid, 
+                             pos = d["x"], 
+                             note = 48 + grid.rows - d["y"], 
+                             vel = 0.5, 
+                             dur = 12 ) 
             note_manager.display_notes()    
         
     else:
-        dx = enc.read_increment(KNOB_XPOS)
-        dy = enc.read_increment(KNOB_YPOS)
-        bx = 1 - enc_butts[KNOB_XPOS]
-        by = 1 - enc_butts[KNOB_YPOS]
-        d["x"] += dx*(1 + bx*XPOS_PUSH_SCALE)
-        d["y"] -= dy*(1 + by*YPOS_PUSH_SCALE)
-        d["x"] = clip(d["x"], 0, WIDTH-rabbit_w)
-        d["y"] = clip(d["y"], 0, HEIGHT-rabbit_h)    
-        f_x = math.floor(d["x"])
-        f_y = math.floor(d["y"])
+        # move rabbit around.  note horizontal is in pulses, e.g. out of 48*4, and vertical is in rows, e.g 1-25
+        dx_pre = enc.read_increment(KNOB_XPOS)
+        dx = cursor.delta_x(dx_pre)
+        bx = 1 - enc_butts[KNOB_XPOS]  # default bx==1, no button, move one column
+               
+        if bx == 1: # no button, move one column
+            cur_col = grid.cols * ( d["x"] / grid.pulses_seen_in_grid ) 
+            cur_col += dx 
+            ppq_in_grid = ( cur_col / grid.cols ) * grid.pulses_seen_in_grid 
+        else:
+            ppq_in_grid = d["x"] + dx
+        d["x"] = ppq_in_grid
+        d["x"] = wrap(d["x"], 0, grid.pulses_seen_in_grid-1)
+
+        dy_pre = enc.read_increment(KNOB_YPOS)
+        dy = cursor.delta_y(dy_pre)
+        #by = 1 - enc_butts[KNOB_YPOS]  # dont invert button press 
+        d["y"] -= dy
+        d["y"] = wrap(d["y"], 0, grid.rows-1)
+
+        f_x, f_y = grid.get_coords(d["x"], d["y"])
+        f_x = math.floor( clip( float(f_x) - rabbit_w/2, 0, WIDTH-rabbit_w) )
+        f_y = math.floor( clip( float(f_y) - rabbit_h/2, 0, HEIGHT-rabbit_h) ) 
         tulip.sprite_move(0, f_x, f_y)
 
     if keeb_mgr.note_add_down_get() == True and \
@@ -175,11 +282,16 @@ def game_loop(d):
 
 
 # initialize
-amy.reset()
+amy.reset( amy.RESET_SEQUENCER )
 start_time = tulip.ticks_ms()  # do this right before takeoff...
 tulip.frame_callback(game_loop, d)   # Register the frame callback and data
-amy.send(osc=0, wave=amy.PCM, patch=18,  vel=0.25, feedback=.6) #14
+amy.send(voices='0,1,2,3', load_patch=1)
+#amy.send(voices=0, note=48, vel=.5)
+#amy.send(voices=1, note=55, vel=.5, sequence= "%d,%d,%d" % (0, amy.SEQUENCER_PPQ*4, 999) )
 
+
+#amy.send(wave=amy.PCM, patch=35,feedback=.5) 
+#amy.send(osc=0, note=50, vel= 1)
 
 current_beat = int((seq_ticks() / 96) % 4)
 tulip.seq_add_callback(beat_callback, int(amy.SEQUENCER_PPQ*4/2))
