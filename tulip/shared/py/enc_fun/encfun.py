@@ -34,30 +34,32 @@ grass_colors = [80, 157, 180, 249]
 
 
 # clear the screen
-tulip.bg_clear(random.choice(grass_colors))
+grass_color = random.choice(grass_colors)
+tulip.bg_clear( grass_color )
 
 
 # display UI hints
 hints = {
     "[ H. Pos. ]",
-    "[ H. Sel. / Add Bt. ] ",
+    "[ H. Sel. ] ",
     "[ Duration ] ",
     "[ Timing ] ",
 
     "[ Row ] ",
     "[ Velocity ] ",
-    "[ V. Sel. / Add Bt. ] ",
+    "[ V. Sel. / Add ] ",
     "[ V. Pos. ]",
 }
 
 hint_x = 25
-hint_y = 550
+hint_y = 580
 hint_color = 0
-hint_h_spacing = 920 / (len(hints)-1)
-hint_h_spacing = 100
+#hint_h_spacing = 960 / (len(hints)-1)
+hint_h_spacing = 120
 for hint_num, hint in enumerate(hints):
     hx = math.floor( clip( hint_x + hint_num * hint_h_spacing, 0, WIDTH-1) )
     hy = math.floor( clip( hint_y, 0, HEIGHT-1) ) 
+    print(f'x: {hx} y: {hy}')
     tulip.bg_str(hint, hx, hy, hint_color, 2)
 
 # Load the rabbit sprite frames into sprite RAM
@@ -80,12 +82,12 @@ d = {   "x":0.0, "y":0,
 
 
 class Note():
-    def __init__(self, pos, note, vel, dur):
+    def __init__(self, pos, note, vel, dur, note_index):
         self.pos = pos
         self.note = note
         self.vel = vel
         self.dur = dur
-
+        self.note_index = note_index
     def __repr__(self):
         return f"Note: {self.note} at {self.pos} with vel {self.vel} for {self.dur} ticks\n"
 
@@ -94,18 +96,29 @@ class NoteManager():
     def __init__(self):
         self.notes = []
         self.note_index = 1
-
+        
     def add(self, grid, pos, note, vel, dur):
         
+        # check if note already exists
+        for n in self.notes:
+            if n.pos == pos and n.note == note:
+                print("note already exists")
+                self.notes.remove(n)     # remove note from data struct
+                amy.send(sequence= ",,%d" % (n.note_index) )    # remove note-on from sequencer
+                amy.send(sequence= ",,%d" % (n.note_index+1) )    # remove note-off from sequencer
+                return "removed"
+
         # store in data struct
-        new_note = Note(pos, note, vel, dur)
+        self.note_index += 1
+        new_note = Note(pos, note, vel, dur, self.note_index)
         self.notes.append(new_note)
         
         # write into sequencer
-        self.note_index += 1
         amy.send(voices=1, note=note, vel=vel, sequence= "%d,%d,%d" % (pos, grid.pulses_seen_in_grid, self.note_index) )
-        
-        #amy.send(voices=1, note=note, vel=.5, sequence= "%d,%d,%d" % (0, amy.SEQUENCER_PPQ*4, 999) )
+        self.note_index += 1
+        note_off_pos = ( pos + dur ) % grid.pulses_seen_in_grid
+        amy.send(voices=1, note=note, vel=0, sequence= "%d,%d,%d" % (note_off_pos, grid.pulses_seen_in_grid, self.note_index) )  
+        return "new"
 
 
     def display_notes(self):
@@ -198,7 +211,7 @@ def beat_callback(t):
     global app
 
     discrete_steps = 4 
-    current_beat = int((seq_ticks() / 96) % discrete_steps )   # 48 PPQ, e.g. 108 BPM = 48*108 ticks/minute = 86 ticks/second
+    current_beat = int((seq_ticks() / 48) % discrete_steps )   # 48 PPQ, e.g. 108 BPM = 48*108 ticks/minute = 86 ticks/second
 
     # plot the running rabbit
     ratio = current_beat / discrete_steps
@@ -209,6 +222,13 @@ def beat_callback(t):
 
     #tulip.sprite_move(1, math.floor(WIDTH/4)*current_beat, 0 ) # later replace with scroll, how cool would that be
     tulip.sprite_move(1, math.floor(sprite_x), math.floor(sprite_y)) # later add bg scroll, how cool would that be
+
+def process_key( key ):
+    global d
+
+    print("got key: %d" % (key))
+
+
 
     
 KNOB_XPOS = 7
@@ -233,44 +253,55 @@ def game_loop(d):
     elif keeb_mgr.note_add_down_get() == False and \
             ( enc_butts[NEW_NOTE_BUTTON1] == 1 or enc_butts[NEW_NOTE_BUTTON2] == 1):
 
-            # Add a note
+            # place musical note
             f_x, f_y = grid.get_coords(d["x"], d["y"])
-            f_x = math.floor( clip( float(f_x) - rabbit_w/2, 0, WIDTH-rabbit_w) )
-            f_y = math.floor( clip( float(f_y) - rabbit_h/2, 0, HEIGHT-rabbit_h) ) 
-            tulip.bg_circle(f_x, f_y, 10, 1, 1)  
+            f_x = math.floor( clip( float(f_x + grid.HorizontalSpacing/2 ) , 0, WIDTH-1) )
+            f_y = math.floor( clip( float(f_y + grid.VerticalSpacing/2   ) , 0, HEIGHT-1) ) 
             keeb_mgr.note_add_down_set(True)
-            note_manager.add( grid, 
+            result = note_manager.add( grid, 
                              pos = d["x"], 
                              note = 48 + grid.rows - d["y"], 
                              vel = 0.5, 
-                             dur = 12 ) 
+                             dur = 6 ) 
+            if result == "new":
+                tulip.bg_circle(f_x, f_y, math.floor(grid.HorizontalSpacing/3), 1, 1)  
+            elif result == "removed":
+                tulip.bg_circle(f_x, f_y, math.floor(grid.HorizontalSpacing/3), grass_color, 1)
+
             note_manager.display_notes()    
         
     else:
         # move rabbit around.  note horizontal is in pulses, e.g. out of 48*4, and vertical is in rows, e.g 1-25
+        move_sprite = 0
         dx_pre = enc.read_increment(KNOB_XPOS)
         dx = cursor.delta_x(dx_pre)
-        bx = 1 - enc_butts[KNOB_XPOS]  # default bx==1, no button, move one column
-               
-        if bx == 1: # no button, move one column
-            cur_col = grid.cols * ( d["x"] / grid.pulses_seen_in_grid ) 
-            cur_col += dx 
-            ppq_in_grid = ( cur_col / grid.cols ) * grid.pulses_seen_in_grid 
-        else:
-            ppq_in_grid = d["x"] + dx
-        d["x"] = ppq_in_grid
-        d["x"] = wrap(d["x"], 0, grid.pulses_seen_in_grid-1)
+        if dx != 0:
+            bx = 1 - enc_butts[KNOB_XPOS]  # default bx==1, no button, move one column
+                
+            if bx == 1: # no button, move one column
+                cur_col = grid.cols * ( d["x"] / grid.pulses_seen_in_grid ) 
+                cur_col += dx 
+                ppq_in_grid = ( cur_col / grid.cols ) * grid.pulses_seen_in_grid 
+            else:
+                ppq_in_grid = d["x"] + dx
+            d["x"] = ppq_in_grid
+            d["x"] = wrap(d["x"], 0, grid.pulses_seen_in_grid-1)
+            print(f'x: {d["x"]}, col: {d["x"]*grid.cols/grid.pulses_seen_in_grid}')
+            move_sprite = 1
 
         dy_pre = enc.read_increment(KNOB_YPOS)
         dy = cursor.delta_y(dy_pre)
-        #by = 1 - enc_butts[KNOB_YPOS]  # dont invert button press 
-        d["y"] -= dy
-        d["y"] = wrap(d["y"], 0, grid.rows-1)
+        if dy != 0:
+            #by = 1 - enc_butts[KNOB_YPOS]  # dont invert button press 
+            d["y"] -= dy
+            d["y"] = wrap(d["y"], 0, grid.rows-1)
+            move_sprite=1
 
-        f_x, f_y = grid.get_coords(d["x"], d["y"])
-        f_x = math.floor( clip( float(f_x) - rabbit_w/2, 0, WIDTH-rabbit_w) )
-        f_y = math.floor( clip( float(f_y) - rabbit_h/2, 0, HEIGHT-rabbit_h) ) 
-        tulip.sprite_move(0, f_x, f_y)
+        if move_sprite:
+            f_x, f_y = grid.get_coords(d["x"], d["y"])
+            f_x = math.floor( clip( float(f_x) + grid.HorizontalSpacing/2, 0, WIDTH-1) )
+            f_y = math.floor( clip( float(f_y) - grid.VerticalSpacing/2, 0, HEIGHT-1) ) 
+            tulip.sprite_move(0, f_x, f_y)
 
         # time jog
         jog = enc.read_increment(KNOB_TIME_JOG)
@@ -302,13 +333,13 @@ tulip.frame_callback(game_loop, d)   # Register the frame callback and data
 amy.send(voices='0,1,2,3', load_patch=1)
 #amy.send(voices=0, note=48, vel=.5)
 #amy.send(voices=1, note=55, vel=.5, sequence= "%d,%d,%d" % (0, amy.SEQUENCER_PPQ*4, 999) )
-
-
 #amy.send(wave=amy.PCM, patch=35,feedback=.5) 
 #amy.send(osc=0, note=50, vel= 1)
 
-current_beat = int((seq_ticks() / 96) % 4)
-tulip.seq_add_callback(beat_callback, int(amy.SEQUENCER_PPQ*4/2))
+current_beat = int((seq_ticks() / 48) % 4)
+tulip.seq_add_callback(beat_callback, int(amy.SEQUENCER_PPQ))
+tulip.keyboard_callback( process_key )
+tulip.key_scan(1)
 
 # Run in a loop forever. Catch ctrl-c
 try:
