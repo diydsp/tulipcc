@@ -50,9 +50,8 @@ class Grid():
                       "E-","F-","F#","G-",
                       "G#","A-","Bb","B-")        
         for row, idx in zip(range(self.rows, 0, -1), range(1, self.rows + 1)):
-            print(f'row: {row}, idx: {idx}')
-exec
-x0 = math.floor(self.start_x - 2*self.HorizontalSpacing - 1)
+            #print(f'row: {row}, idx: {idx}')
+            x0 = math.floor(self.start_x - 2*self.HorizontalSpacing - 1)
             y0 = math.floor(row*self.VerticalSpacing + self.start_y - 2 )
             note_num = self.note_start + idx
             note_name = note_names[note_num % 12]    

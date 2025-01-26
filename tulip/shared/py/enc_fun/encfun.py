@@ -11,14 +11,6 @@ note: screen size 1024x600, with rabbit: 975x568
 def clip(val, min_val, max_val):
     return max(min(val, max_val), min_val)
 
-def wrap(val, min_val, max_val):
-    if val < min_val:
-        return max_val
-    elif val > max_val:
-        return min_val
-    else:
-        return val
-
 def round_half_up(n):
     if n > 0:
         return math.floor(n + 0.5)
@@ -32,43 +24,40 @@ pix_dir = "pix"
 
 grass_colors = [80, 157, 180, 249]
 
-
 # clear the screen
-grass_color = random.choice(grass_colors)
-tulip.bg_clear( grass_color )
+bg = { "grass_color": random.choice(grass_colors) }
+bg['grass_color'] = random.choice( grass_colors )
+tulip.bg_clear( bg['grass_color'] )
 
 
 # display UI hints
-hints = {
+hints = [
     "[ H. Pos. ]",
-    "[ H. Sel. ] ",
-    "[ Duration ] ",
-    "[ Timing ] ",
+    "    [  ] ",  # H. Sel.
+    "    [  ] ",  # Duration
+    "    [  ] ",  # Timing
 
-    "[ Row ] ",
-    "[ Velocity ] ",
-    "[ V. Sel. / Add ] ",
-    "[ V. Pos. ]",
-}
+    "    [  ] ",   # Row
+    "    [  ] ",   # Velocity
+    "    [  ] ",   # V. Sel.
+    "[ V. Pos. / Add ]",
+]
 
 hint_x = 25
 hint_y = 580
 hint_color = 0
 #hint_h_spacing = 960 / (len(hints)-1)
-hint_h_spacing = 120
+hint_h_spacing = 120 #120
 for hint_num, hint in enumerate(hints):
     hx = math.floor( clip( hint_x + hint_num * hint_h_spacing, 0, WIDTH-1) )
     hy = math.floor( clip( hint_y, 0, HEIGHT-1) ) 
-    print(f'x: {hx} y: {hy}')
+    print(f'x: {hx} y: {hy}, hint: {hint}')
     tulip.bg_str(hint, hx, hy, hint_color, 2)
-
+    
 # Load the rabbit sprite frames into sprite RAM
 (rabbit_w, rabbit_h) = (48, 32)
 tulip.sprite_png(pix_dir + "/rabbit_r_%d.png" % (0), rabbit_w*rabbit_h*0 )
 
-# Draw a line of pixels up top with random colors
-for x in range(WIDTH):
-    tulip.bg_pixel(x,0,random.choice(grass_colors))
 
 # For the rest of the lines 
 for y in range(1,HEIGHT):
@@ -76,10 +65,17 @@ for y in range(1,HEIGHT):
     tulip.bg_blit(x_start,0,0,1,0,y)   
 
 
-d = {   "x":0.0, "y":0,
+seq_edit = {   "x":0.0, "y":0,
         "time_disp_start":0.0,
-        "run":1}
+        "run":1,
+        "transport":"playing",
+        "tempo":108,
+        "grass_color": bg["grass_color"],
+        }
 
+# Draw a line of pixels up top with random colors
+for x in range(WIDTH):
+    tulip.bg_pixel(x,0,seq_edit["grass_color"   ])
 
 class Note():
     def __init__(self, pos, note, vel, dur, note_index):
@@ -220,14 +216,70 @@ def beat_callback(t):
     sprite_x = clip(sprite_x, 0, WIDTH-rabbit_w)
     sprite_y = clip(sprite_y, 0, HEIGHT-rabbit_h)
 
-    #tulip.sprite_move(1, math.floor(WIDTH/4)*current_beat, 0 ) # later replace with scroll, how cool would that be
     tulip.sprite_move(1, math.floor(sprite_x), math.floor(sprite_y)) # later add bg scroll, how cool would that be
 
+
+tempo_x = 25
+tempo_y = 200
+tempo_color=0
+def seq_tempo_delta( tempo_delta ):
+    
+    temp = seq_edit["tempo"] + tempo_delta
+    temp = clip(temp, 0, 9999)
+    seq_edit["tempo"] = temp
+    amy.send(tempo=temp)
+    # rectangle draws downwards, text draws upwards, so offset it
+    #tulip.bg_rect(tempo_x,tempo_y, 10*7,28, seq_edit['grass_color'], 1 )
+    tulip.bg_rect(                tempo_x, tempo_y   , 7*12,28, 117, 1 )
+    tulip.bg_str( f'BPM: {temp}', tempo_x+3, tempo_y+16,          tempo_color, 2)
+
+
+def seq_transport_cmd( cmd ):    
+
+    if cmd == "toggle":
+        if seq_edit["transport"] == "playing":
+            seq_edit["transport"] = "paused"
+            amy.send(tempo=0) # literally pause seq
+
+        elif seq_edit["transport"] == "paused":
+            seq_edit["transport"] = "playing"
+            #amy.send(reset=amy.RESET_TIMEBASE)  # reset seq
+            amy.send(tempo=seq_edit["tempo"])   # unpause seq   
+
+        else:
+            seq_edit["transport"] == "paused"
+            amy.send(tempo=0) # literally pause seq
+
+
+def seq_cursor( dir ):
+
+    if dir == "up": cursor.delta_y(-1)
+    elif dir == "down": cursor.delta_y(1)
+    elif dir == "left": cursor.delta_x(-1)
+    elif dir == "right": cursor.delta_x(1)
+    else: print("unhandled cursor dir: %s" % (dir))
+
+
 def process_key( key ):
-    global d
+    global seq_edit
 
-    print("got key: %d" % (key))
+    # space
+    if key == 32: seq_transport_cmd( "toggle")        
+        
+    # cursor keys
+    elif key == 259: seq_cursor("up")
+    elif key == 258: seq_cursor("down")  
+    elif key == 260: seq_cursor("left")  
+    elif key == 261: seq_cursor("right") 
 
+    # esc
+    #if key == 0x29: 
+
+    # page up/down
+    elif key== 25:seq_tempo_delta(1)
+    elif key == 22:seq_tempo_delta(-1)
+
+    else: print("unhandled key: %d" % (key))
 
 
     
@@ -278,14 +330,15 @@ def game_loop(d):
         if dx != 0:
             bx = 1 - enc_butts[KNOB_XPOS]  # default bx==1, no button, move one column
                 
-            if bx == 1: # no button, move one column
+            if bx == 1: # button unpressed, move one column at a time
                 cur_col = grid.cols * ( d["x"] / grid.pulses_seen_in_grid ) 
                 cur_col += dx 
+                cur_col = cur_col % grid.cols
                 ppq_in_grid = ( cur_col / grid.cols ) * grid.pulses_seen_in_grid 
             else:
                 ppq_in_grid = d["x"] + dx
             d["x"] = ppq_in_grid
-            d["x"] = wrap(d["x"], 0, grid.pulses_seen_in_grid-1)
+            d["x"] = d["x"] % grid.pulses_seen_in_grid  
             print(f'x: {d["x"]}, col: {d["x"]*grid.cols/grid.pulses_seen_in_grid}')
             move_sprite = 1
 
@@ -294,7 +347,7 @@ def game_loop(d):
         if dy != 0:
             #by = 1 - enc_butts[KNOB_YPOS]  # dont invert button press 
             d["y"] -= dy
-            d["y"] = wrap(d["y"], 0, grid.rows-1)
+            d["y"] = d["y"] % grid.rows
             move_sprite=1
 
         if move_sprite:
@@ -307,10 +360,13 @@ def game_loop(d):
         jog = enc.read_increment(KNOB_TIME_JOG)
         if jog != 0:
             d["time_disp_start"] += jog
-            print(f"jog: {jog} type: {type(jog)}")  
-            cx,cy = grid.get_coords(d["x"], d["y"])
-            for row in range(grid.VerticalSpacing):
-                tulip.bg_scroll_x_offset(math.floor( cy+row), math.floor( d["time_disp_start"]) )
+            print(f"jog: {jog} time_disp_start: {d['time_disp_start']}")              
+            for row in range(grid.start_y, grid.start_y + grid.height):
+                tulip.bg_scroll_x_offset(math.floor( row), math.floor( d["time_disp_start"]) )
+
+            #cx,cy = grid.get_coords(d["x"], d["y"])
+            #for row in range(grid.VerticalSpacing):
+            #    tulip.bg_scroll_x_offset(math.floor( cy+row), math.floor( d["time_disp_start"]) )
 
 
 
@@ -329,7 +385,7 @@ def game_loop(d):
 # initialize
 amy.reset( amy.RESET_SEQUENCER )
 start_time = tulip.ticks_ms()  # do this right before takeoff...
-tulip.frame_callback(game_loop, d)   # Register the frame callback and data
+tulip.frame_callback(game_loop, seq_edit)   # Register the frame callback and data
 amy.send(voices='0,1,2,3', load_patch=1)
 #amy.send(voices=0, note=48, vel=.5)
 #amy.send(voices=1, note=55, vel=.5, sequence= "%d,%d,%d" % (0, amy.SEQUENCER_PPQ*4, 999) )
@@ -343,12 +399,12 @@ tulip.key_scan(1)
 
 # Run in a loop forever. Catch ctrl-c
 try:
-    while d["run"]:
+    while seq_edit["run"]:
         # In an infinite loop , it's better to sleep than to say "pass", give the Tulip some time to breathe
         time.sleep_ms(100)
         #pass
 except KeyboardInterrupt:
-    d["run"] = 0
+    seq_edit["run"] = 0
 
 
 # Clean up a bit
