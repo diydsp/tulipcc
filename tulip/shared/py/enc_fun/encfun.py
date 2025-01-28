@@ -221,7 +221,7 @@ def beat_callback(t):
     sprite_y = clip(sprite_y, 0, HEIGHT-rabbit_h)
 
     tulip.sprite_move(1, math.floor(sprite_x), math.floor(sprite_y)) # later add bg scroll, how cool would that be
-    print(f'seq_ticks: {seq_ticks()}, current_beat: {current_beat}')   
+    #print(f'seq_ticks: {seq_ticks()}, current_beat: {current_beat}')   
 
 tempo_x = 25
 tempo_y = 200
@@ -300,32 +300,80 @@ def process_key( key ):
         print("unhandled key: %d" % (key))
         print(f'{tulip.keys()}')
 
-    
-def h_note_select( d, delta ):
+def update_closest_note(note_dist,min_dist,note,closest_note):
+    # find closet one, but not including this one.  
+    if note_dist != 0:
+        print(f'note: {note.note}, dist: {note_dist}')  
+        if note_dist < min_dist:
+            min_dist = note_dist
+            closest_note = note
+    return min_dist, closest_note
+
+def xaxis_note_select( d, delta ):
     
     # first find closest note in this row
+    min_dist = 1000000000
+    closest_note = None
+    for note in note_manager.notes:
+        if note.note == 48 + grid.rows - d["y"]:
+            if delta > 0:
+                x_comp = note.pos - d["x"]   
+            elif delta < 0:
+                x_comp = d["x"] - note.pos
+            x_comp = x_comp % grid.pulses_seen_in_grid 
+            note_dist = x_comp**2 
+
+            min_dist, closest_note = update_closest_note(note_dist,min_dist,note,closest_note)
+
+    if closest_note != None:
+        return closest_note
 
     # find distance between this note and all notes
-    min_dist = 1000000000
     for note in note_manager.notes:
-        x_comp = note.pos - d["x"]   
+        if delta > 0:
+            x_comp = note.pos - d["x"]   
+        elif delta < 0:
+            x_comp = d["x"] - note.pos
         x_comp = x_comp % grid.pulses_seen_in_grid 
         y_comp = abs(note.note - (48 + grid.rows - d["y"])) 
         note_dist = x_comp**2 + y_comp**2
 
-        # find closet one, but not including this one.  
-        if note_dist != 0:
-            print(f'note: {note.note}, dist: {note_dist}')  
-            if note_dist < min_dist:
-                min_dist = note_dist
-                closest_note = note
-
+        min_dist, closest_note = update_closest_note(note_dist,min_dist,note,closest_note)
     
+    return closest_note
+
+def yaxis_note_select( d, delta ):
+    
+    # first find closest note at this position, and in this column
+    min_dist = 1000000000
+    closest_note = None
+    for note in note_manager.notes: 
+        if note.pos == d["x"]:
+            if delta > 0:
+                y_comp = note.note - (48 + grid.rows - d["y"])
+            elif delta < 0:
+                y_comp = (48 + grid.rows - d["y"]) - note.note
+            y_comp = y_comp % grid.rows
+            note_dist = y_comp**2
+            min_dist, closest_note = update_closest_note(note_dist,min_dist,note,closest_note)
+    if closest_note != None:
+        return closest_note
+    
+    # find distance between this note and all notes
+    for note in note_manager.notes:
+        if delta > 0:
+            y_comp = note.note - (48 + grid.rows - d["y"])
+        elif delta < 0:
+            y_comp = (48 + grid.rows - d["y"]) - note.note
+        x_comp = abs(note.pos - d["x"]) 
+        note_dist = x_comp**2 + y_comp**2
+        min_dist, closest_note = update_closest_note(note_dist,min_dist,note,closest_note)
     return closest_note
 
 KNOB_XPOS = 7
 KNOB_YPOS = 0
 ENC_H_NOTE_SEL = 6
+ENC_V_NOTE_SEL = 1
 XPOS_PUSH_SCALE = 8
 YPOS_PUSH_SCALE = 8
 NEW_NOTE_BUTTON1 = 6
@@ -405,15 +453,33 @@ def game_loop(d):
             for row in range(grid.start_y, grid.start_y + grid.height):
                 tulip.bg_scroll_x_offset(math.floor( row), math.floor( d["time_disp_start"]) )
 
-        # select note
+        # select note left/right
         note_sel_pre = enc.read_increment(ENC_H_NOTE_SEL)
         note_sel_dx = cursor_xy_sel.delta_x(note_sel_pre)
         if note_sel_dx != 0:
-            print(f'h_note_sel_delta: {note_sel_dx}')
-            nearest_note = h_note_select( d, note_sel_dx )   
+            #print(f'h_note_sel_delta: {note_sel_dx}')
+            nearest_note = xaxis_note_select( d, note_sel_dx )   
             print(f'nearest_note: {nearest_note}, pos={nearest_note.pos}, note={nearest_note.note}, vel={nearest_note.vel}')    
-            d["x"] = nearest_note.pos   
-            redraw_cursor_plox = 1
+            if nearest_note != None:
+                d["x"] = nearest_note.pos   
+                d["y"] = 48 + grid.rows - nearest_note.note
+                redraw_cursor_plox = 1
+            else:
+                print("no nearest note found")
+
+        # select note up/down
+        note_sel_pre = enc.read_increment(ENC_V_NOTE_SEL)
+        note_sel_dy = cursor_xy_sel.delta_y(note_sel_pre)
+        if note_sel_dy != 0:
+            #print(f'v_note_sel_delta: {note_sel_dy}')
+            nearest_note = yaxis_note_select( d, note_sel_dy )   
+            print(f'nearest_note: {nearest_note}, pos={nearest_note.pos}, note={nearest_note.note}, vel={nearest_note.vel}')    
+            if nearest_note != None:
+                d["x"] = nearest_note.pos   
+                d["y"] = 48 + grid.rows - nearest_note.note
+                redraw_cursor_plox = 1
+            else:
+                print("no nearest note found")
 
         if redraw_cursor_plox:
             f_x, f_y = grid.get_coords(d["x"], d["y"])
