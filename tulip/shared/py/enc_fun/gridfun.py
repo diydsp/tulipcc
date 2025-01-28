@@ -2,9 +2,9 @@ import math
 import tulip
 
 """
-methods having to do with a grid
-e.g. drum grid, piano roll
-
+Grid Fun by DIYDSP
+simple grid class that draws a basic parameterizable grid
+like a piano roll or drum grid
 """
                
 class Grid():

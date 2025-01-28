@@ -5,7 +5,10 @@ import m5_8encoder as enc
 import gridfun as gfun
 
 """
-note: screen size 1024x600, with rabbit: 975x568
+Encoder Fun by DIYDSP
+the critters are placing easter eggs and little piles of clover.  another
+critter is hopping around the screen.  each time he hops past what the
+other has set up the syntehtic critter plays a note.  
 """
 
 def clip(val, min_val, max_val):
@@ -51,7 +54,7 @@ hint_h_spacing = 120 #120
 for hint_num, hint in enumerate(hints):
     hx = math.floor( clip( hint_x + hint_num * hint_h_spacing, 0, WIDTH-1) )
     hy = math.floor( clip( hint_y, 0, HEIGHT-1) ) 
-    print(f'x: {hx} y: {hy}, hint: {hint}')
+    #print(f'x: {hx} y: {hy}, hint: {hint}')
     tulip.bg_str(hint, hx, hy, hint_color, 2)
     
 # Load the rabbit sprite frames into sprite RAM
@@ -198,7 +201,7 @@ tulip.sprite_on(1)
 
 note_manager = NoteManager()
 keeb_mgr = KeebMgr()    
-grid = gfun.Grid(start_x=200, start_y=50, width=500, height=500, palette_index=3,
+grid = gfun.Grid(start_x=200, start_y=50, width=700, height=500, palette_index=3,
                  cols=32,  rows=25, visible_quarter_notes=4,seq_ppq=amy.SEQUENCER_PPQ) 
 grid.draw()
 cursor = Cursor()
@@ -217,7 +220,7 @@ def beat_callback(t):
     sprite_y = clip(sprite_y, 0, HEIGHT-rabbit_h)
 
     tulip.sprite_move(1, math.floor(sprite_x), math.floor(sprite_y)) # later add bg scroll, how cool would that be
-
+    print(f'seq_ticks: {seq_ticks()}, current_beat: {current_beat}')   
 
 tempo_x = 25
 tempo_y = 200
@@ -240,16 +243,29 @@ def seq_transport_cmd( cmd ):
         if seq_edit["transport"] == "playing":
             seq_edit["transport"] = "paused"
             amy.send(tempo=0) # literally pause seq
+            #amy.send(tempo=1) 
 
         elif seq_edit["transport"] == "paused":
             seq_edit["transport"] = "playing"
+
+            # running in this order causes delays in playback resuming
+            # tulip.seq_ticks() doesn't reset to 0
             #amy.send(reset=amy.RESET_TIMEBASE)  # reset seq
+            #amy.send(tempo=seq_edit["tempo"])   # unpause seq   
+
+            # running in this order also causes delays in playback resuming
+            # tulip.seq_ticks() doesn't reset to 0
             amy.send(tempo=seq_edit["tempo"])   # unpause seq   
+            #amy.send(reset=amy.RESET_TIMEBASE)  # reset seq
+
+            # running in this order causes 
+            #amy.send(tempo=seq_edit["tempo"])   # unpause seq   
 
         else:
             seq_edit["transport"] == "paused"
+            #amy.send(tempo=1) 
             amy.send(tempo=0) # literally pause seq
-
+    print(f'transport: {seq_edit["transport"]}')
 
 def seq_cursor( dir ):
 
@@ -279,8 +295,9 @@ def process_key( key ):
     elif key== 25:seq_tempo_delta(1)
     elif key == 22:seq_tempo_delta(-1)
 
-    else: print("unhandled key: %d" % (key))
-
+    else:   
+        print("unhandled key: %d" % (key))
+        print(f'{tulip.keys()}')
 
     
 KNOB_XPOS = 7
@@ -318,7 +335,7 @@ def game_loop(d):
             if result == "new":
                 tulip.bg_circle(f_x, f_y, math.floor(grid.HorizontalSpacing/3), 1, 1)  
             elif result == "removed":
-                tulip.bg_circle(f_x, f_y, math.floor(grid.HorizontalSpacing/3), grass_color, 1)
+                tulip.bg_circle(f_x, f_y, math.floor(grid.HorizontalSpacing/3), d["grass_color"], 1)
 
             note_manager.display_notes()    
         
@@ -339,7 +356,7 @@ def game_loop(d):
                 ppq_in_grid = d["x"] + dx
             d["x"] = ppq_in_grid
             d["x"] = d["x"] % grid.pulses_seen_in_grid  
-            print(f'x: {d["x"]}, col: {d["x"]*grid.cols/grid.pulses_seen_in_grid}')
+            #print(f'x: {d["x"]}, col: {d["x"]*grid.cols/grid.pulses_seen_in_grid}')
             move_sprite = 1
 
         dy_pre = enc.read_increment(KNOB_YPOS)
@@ -357,16 +374,13 @@ def game_loop(d):
             tulip.sprite_move(0, f_x, f_y)
 
         # time jog
-        jog = enc.read_increment(KNOB_TIME_JOG)
-        if jog != 0:
-            d["time_disp_start"] += jog
-            print(f"jog: {jog} time_disp_start: {d['time_disp_start']}")              
+        jog_amount = enc.read_increment(KNOB_TIME_JOG)
+        if jog_amount != 0:
+            d["time_disp_start"] += jog_amount
+            print(f"jog_amount: {jog_amount} time_disp_start: {d['time_disp_start']}")              
             for row in range(grid.start_y, grid.start_y + grid.height):
                 tulip.bg_scroll_x_offset(math.floor( row), math.floor( d["time_disp_start"]) )
 
-            #cx,cy = grid.get_coords(d["x"], d["y"])
-            #for row in range(grid.VerticalSpacing):
-            #    tulip.bg_scroll_x_offset(math.floor( cy+row), math.floor( d["time_disp_start"]) )
 
 
 
@@ -408,6 +422,8 @@ except KeyboardInterrupt:
 
 
 # Clean up a bit
+tulip.keyboard_callback()
+tulip.seq_remove_callbacks()
 amy.reset()
 tulip.key_scan(0)
 tulip.frame_callback()
