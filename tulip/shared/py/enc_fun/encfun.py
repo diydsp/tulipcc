@@ -204,7 +204,8 @@ keeb_mgr = KeebMgr()
 grid = gfun.Grid(start_x=200, start_y=50, width=700, height=500, palette_index=3,
                  cols=32,  rows=25, visible_quarter_notes=4,seq_ppq=amy.SEQUENCER_PPQ) 
 grid.draw()
-cursor = Cursor()
+cursor_xy_pos = Cursor()
+cursor_xy_sel = Cursor()
 
 def beat_callback(t):
     global app
@@ -269,10 +270,10 @@ def seq_transport_cmd( cmd ):
 
 def seq_cursor( dir ):
 
-    if dir == "up": cursor.delta_y(-1)
-    elif dir == "down": cursor.delta_y(1)
-    elif dir == "left": cursor.delta_x(-1)
-    elif dir == "right": cursor.delta_x(1)
+    if dir == "up": cursor_xy_pos.delta_y(-1)
+    elif dir == "down": cursor_xy_pos.delta_y(1)
+    elif dir == "left": cursor_xy_pos.delta_x(-1)
+    elif dir == "right": cursor_xy_pos.delta_x(1)
     else: print("unhandled cursor dir: %s" % (dir))
 
 
@@ -300,8 +301,31 @@ def process_key( key ):
         print(f'{tulip.keys()}')
 
     
+def h_note_select( d, delta ):
+    
+    # first find closest note in this row
+
+    # find distance between this note and all notes
+    min_dist = 1000000000
+    for note in note_manager.notes:
+        x_comp = note.pos - d["x"]   
+        x_comp = x_comp % grid.pulses_seen_in_grid 
+        y_comp = abs(note.note - (48 + grid.rows - d["y"])) 
+        note_dist = x_comp**2 + y_comp**2
+
+        # find closet one, but not including this one.  
+        if note_dist != 0:
+            print(f'note: {note.note}, dist: {note_dist}')  
+            if note_dist < min_dist:
+                min_dist = note_dist
+                closest_note = note
+
+    
+    return closest_note
+
 KNOB_XPOS = 7
 KNOB_YPOS = 0
+ENC_H_NOTE_SEL = 6
 XPOS_PUSH_SCALE = 8
 YPOS_PUSH_SCALE = 8
 NEW_NOTE_BUTTON1 = 6
@@ -316,13 +340,14 @@ def game_loop(d):
     enc_butts = enc.read_all_buttons()
     enc_butts = [1-x for x in enc_butts]  # rev polarity
 
+    # reset
     if enc_butts[NEW_NOTE_BUTTON1] == 1 and enc_butts[NEW_NOTE_BUTTON2] == 1:
         tulip.bg_clear(random.choice(grass_colors))
 
+    # place musical note
     elif keeb_mgr.note_add_down_get() == False and \
             ( enc_butts[NEW_NOTE_BUTTON1] == 1 or enc_butts[NEW_NOTE_BUTTON2] == 1):
 
-            # place musical note
             f_x, f_y = grid.get_coords(d["x"], d["y"])
             f_x = math.floor( clip( float(f_x + grid.HorizontalSpacing/2 ) , 0, WIDTH-1) )
             f_y = math.floor( clip( float(f_y + grid.VerticalSpacing/2   ) , 0, HEIGHT-1) ) 
@@ -340,10 +365,12 @@ def game_loop(d):
             note_manager.display_notes()    
         
     else:
-        # move rabbit around.  note horizontal is in pulses, e.g. out of 48*4, and vertical is in rows, e.g 1-25
-        move_sprite = 0
+
+        # move rabbit fwd/back in time in X.  
+        # note horizontal is in pulses, e.g. out of 48*4
+        redraw_cursor_plox = 0
         dx_pre = enc.read_increment(KNOB_XPOS)
-        dx = cursor.delta_x(dx_pre)
+        dx = cursor_xy_pos.delta_x(dx_pre)
         if dx != 0:
             bx = 1 - enc_butts[KNOB_XPOS]  # default bx==1, no button, move one column
                 
@@ -352,26 +379,23 @@ def game_loop(d):
                 cur_col += dx 
                 cur_col = cur_col % grid.cols
                 ppq_in_grid = ( cur_col / grid.cols ) * grid.pulses_seen_in_grid 
-            else:
+
+            else:    # button pressed, move one PPQ at a time
                 ppq_in_grid = d["x"] + dx
+
             d["x"] = ppq_in_grid
             d["x"] = d["x"] % grid.pulses_seen_in_grid  
             #print(f'x: {d["x"]}, col: {d["x"]*grid.cols/grid.pulses_seen_in_grid}')
-            move_sprite = 1
+            redraw_cursor_plox = 1
 
+        # move rabbit up/down in notespace / Y-axis
         dy_pre = enc.read_increment(KNOB_YPOS)
-        dy = cursor.delta_y(dy_pre)
+        dy = cursor_xy_pos.delta_y(dy_pre)
         if dy != 0:
             #by = 1 - enc_butts[KNOB_YPOS]  # dont invert button press 
             d["y"] -= dy
             d["y"] = d["y"] % grid.rows
-            move_sprite=1
-
-        if move_sprite:
-            f_x, f_y = grid.get_coords(d["x"], d["y"])
-            f_x = math.floor( clip( float(f_x) + grid.HorizontalSpacing/2, 0, WIDTH-1) )
-            f_y = math.floor( clip( float(f_y) - grid.VerticalSpacing/2, 0, HEIGHT-1) ) 
-            tulip.sprite_move(0, f_x, f_y)
+            redraw_cursor_plox=1
 
         # time jog
         jog_amount = enc.read_increment(KNOB_TIME_JOG)
@@ -381,10 +405,24 @@ def game_loop(d):
             for row in range(grid.start_y, grid.start_y + grid.height):
                 tulip.bg_scroll_x_offset(math.floor( row), math.floor( d["time_disp_start"]) )
 
+        # select note
+        note_sel_pre = enc.read_increment(ENC_H_NOTE_SEL)
+        note_sel_dx = cursor_xy_sel.delta_x(note_sel_pre)
+        if note_sel_dx != 0:
+            print(f'h_note_sel_delta: {note_sel_dx}')
+            nearest_note = h_note_select( d, note_sel_dx )   
+            print(f'nearest_note: {nearest_note}, pos={nearest_note.pos}, note={nearest_note.note}, vel={nearest_note.vel}')    
+            d["x"] = nearest_note.pos   
+            redraw_cursor_plox = 1
+
+        if redraw_cursor_plox:
+            f_x, f_y = grid.get_coords(d["x"], d["y"])
+            f_x = math.floor( clip( float(f_x) + grid.HorizontalSpacing/2, 0, WIDTH-1) )
+            f_y = math.floor( clip( float(f_y) - grid.VerticalSpacing/2, 0, HEIGHT-1) ) 
+            tulip.sprite_move(0, f_x, f_y)
 
 
-
-
+    # obsolete
     if keeb_mgr.note_add_down_get() == True and \
         enc_butts[NEW_NOTE_BUTTON1] == 0 and enc_butts[NEW_NOTE_BUTTON2] == 0:
             keeb_mgr.note_add_down_set(False)
