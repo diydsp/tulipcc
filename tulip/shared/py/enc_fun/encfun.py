@@ -1,8 +1,9 @@
 import random, time, math, os
-import tulip, amy, music
+import tulip, amy, music, midi
 from tulip import ticks_ms, seq_add_callback, seq_remove_callback, seq_ticks
 import m5_8encoder as enc
 import gridfun as gfun
+#from operator import attrgetter # not available?
 
 """
 Encoder Fun by DIYDSP
@@ -81,14 +82,14 @@ for x in range(WIDTH):
     tulip.bg_pixel(x,0,seq_edit["grass_color"   ])
 
 class Note():
-    def __init__(self, pos, note, vel, dur, note_index):
+    def __init__(self, pos, note_num, vel, dur, note_index):
         self.pos = pos
-        self.note = note
+        self.note_num = note_num
         self.vel = vel
         self.dur = dur
         self.note_index = note_index
     def __repr__(self):
-        return f"Note: {self.note} at {self.pos} with vel {self.vel} for {self.dur} ticks\n"
+        return f"Pos {self.pos}, note_num: {self.note_num}, vel {self.vel}, dur {self.dur} ticks\n"
 
 
 class NoteManager():
@@ -96,11 +97,11 @@ class NoteManager():
         self.notes = []
         self.note_index = 1
         
-    def add(self, grid, pos, note, vel, dur):
+    def add(self, grid, pos, note_num, vel, dur):
         
         # check if note already exists
         for n in self.notes:
-            if n.pos == pos and n.note == note:
+            if n.pos == pos and n.note_num == note_num:
                 print("note already exists")
                 self.notes.remove(n)     # remove note from data struct
                 amy.send(sequence= ",,%d" % (n.note_index) )    # remove note-on from sequencer
@@ -109,34 +110,41 @@ class NoteManager():
 
         # store in data struct
         self.note_index += 1
-        new_note = Note(pos, note, vel, dur, self.note_index)
+        new_note = Note(pos, note_num, vel, dur, self.note_index)
         self.notes.append(new_note)
-        
+        # sort for easier display.  
+        # not efficient but can be upgraded to bisect or sortedcontainers.
+        self.notes.sort(key=lambda item: (item.pos, item.note_num))
+            #self.notes.sort(key=attrgetter("pos", "note_num"))  # attrgetter not available
+ 
         # write into sequencer
-        amy.send(voices=1, note=note, vel=vel, sequence= "%d,%d,%d" % (pos, grid.pulses_seen_in_grid, self.note_index) )
+        amy.send(voices=1, note=note_num, vel=vel, sequence= "%d,%d,%d" % (pos, grid.pulses_seen_in_grid, self.note_index) )
         self.note_index += 1
         note_off_pos = ( pos + dur ) % grid.pulses_seen_in_grid
-        amy.send(voices=1, note=note, vel=0, sequence= "%d,%d,%d" % (note_off_pos, grid.pulses_seen_in_grid, self.note_index) )  
+        amy.send(voices=1, note=note_num, vel=0, sequence= "%d,%d,%d" % (note_off_pos, grid.pulses_seen_in_grid, self.note_index) )  
         return "new"
 
 
     def display_notes(self):
         print(self.notes)
 
-class EncVal():
-    def __init__(self):
-        self.prev = [0] * 8
-        enc.read_all_increments()  # clear out values
-
-    def set(self, idx, val):
-        self.prev[idx] = val
-
-    def get(self):
-        return self.prv_pos
+# looks not used anymore
+#class EncVal():
+#    def __init__(self):
+#        self.prev = [0] * 8
+#       enc.read_all_increments()  # clear out values
+#
+#   def set(self, idx, val):
+#        self.prev[idx] = val
+#
+#    def get(self):
+#        return self.prv_pos
     
 
 
-class KeebMgr():
+class ButtonManager():
+    """Keep track of which encoders' buttons were last measured down.  Good for detecting changes.
+    Perhaps encoder driver does this already?"""
     def __init__(self):
         self.note_add_down=False
 
@@ -148,6 +156,7 @@ class KeebMgr():
 
 
 class Cursor():
+    """Make up for the fact that encoders move two values for every physical step"""
     def __init__(self):
         self.x = 0
         self.y = 0
@@ -200,12 +209,12 @@ tulip.sprite_on(1)
 
 
 note_manager = NoteManager()
-keeb_mgr = KeebMgr()    
+button_mgr = ButtonManager()    
 grid = gfun.Grid(start_x=200, start_y=50, width=700, height=500, palette_index=3,
                  cols=32,  rows=25, visible_quarter_notes=4,seq_ppq=amy.SEQUENCER_PPQ) 
 grid.draw()
-cursor_xy_pos = Cursor()
-cursor_xy_sel = Cursor()
+cursor_xy_pos = Cursor()  # for position encoders
+cursor_xy_sel = Cursor()  # for selection encoders
 
 def beat_callback(t):
     global app
@@ -301,9 +310,9 @@ def process_key( key ):
         print(f'{tulip.keys()}')
 
 def update_closest_note(note_dist,min_dist,note,closest_note):
-    # find closet one, but not including this one.  
+    # find closet one, but not including one currently at the cursor's position.  
     if note_dist != 0:
-        print(f'note: {note.note}, dist: {note_dist}')  
+        #print(f'note: {note.note_num}, pos: {note.pos}, dist: {note_dist}')  
         if note_dist < min_dist:
             min_dist = note_dist
             closest_note = note
@@ -311,60 +320,78 @@ def update_closest_note(note_dist,min_dist,note,closest_note):
 
 def xaxis_note_select( d, delta ):
     
-    # first find closest note in this row
+    # 1. first find closest note in this row
     min_dist = 1000000000
     closest_note = None
     for note in note_manager.notes:
-        if note.note == 48 + grid.rows - d["y"]:
+        if note.note_num == 48 + grid.rows - d["y"]:
             if delta > 0:
                 x_comp = note.pos - d["x"]   
             elif delta < 0:
                 x_comp = d["x"] - note.pos
             x_comp = x_comp % grid.pulses_seen_in_grid 
             note_dist = x_comp**2 
-
             min_dist, closest_note = update_closest_note(note_dist,min_dist,note,closest_note)
-
     if closest_note != None:
         return closest_note
 
-    # find distance between this note and all notes
+    # 2. seek closet note from curs y pos, but not including any currently at the cursor's column.
+    print('x_note_sel stage 2')
     for note in note_manager.notes:
-        if delta > 0:
-            x_comp = note.pos - d["x"]   
-        elif delta < 0:
-            x_comp = d["x"] - note.pos
-        x_comp = x_comp % grid.pulses_seen_in_grid 
-        y_comp = abs(note.note - (48 + grid.rows - d["y"])) 
-        note_dist = x_comp**2 + y_comp**2
-
-        min_dist, closest_note = update_closest_note(note_dist,min_dist,note,closest_note)
+        if note.pos != d["x"]:
+            if delta > 0:
+                x_comp = note.pos - d["x"]   
+            elif delta < 0:
+                x_comp = d["x"] - note.pos
+            x_comp = x_comp % grid.pulses_seen_in_grid 
+            y_comp = abs(note.note_num - (48 + grid.rows - d["y"])) 
+            note_dist = x_comp**2 + y_comp**2
+            min_dist, closest_note = update_closest_note(note_dist,min_dist,note,closest_note)
     
     return closest_note
 
 def yaxis_note_select( d, delta ):
     
-    # first find closest note at this position, and in this column
+    # 1. seek closest note at curs x position. aka time at the ppq scale/column 
+    # look up and down the pitch axis for the closest note
     min_dist = 1000000000
     closest_note = None
     for note in note_manager.notes: 
         if note.pos == d["x"]:
             if delta > 0:
-                y_comp = note.note - (48 + grid.rows - d["y"])
+                y_comp = note.note_num - (48 + grid.rows - d["y"])
             elif delta < 0:
-                y_comp = (48 + grid.rows - d["y"]) - note.note
+                y_comp = (48 + grid.rows - d["y"]) - note.note_num
             y_comp = y_comp % grid.rows
             note_dist = y_comp**2
             min_dist, closest_note = update_closest_note(note_dist,min_dist,note,closest_note)
     if closest_note != None:
         return closest_note
-    
+
+    # 2. seek closest note from curs x position, but not including any currently at the cursor's row.
+    print("y_note_sel stage 2")
+    for note in note_manager.notes:
+        #if note.pos == d["x"] and note.note_num != 48 + grid.rows - d["y"]:
+        current_note_number = 48 + grid.rows - d["y"]
+        if note.note_num != current_note_number:
+            if delta > 0:
+                y_comp = note.note_num - (48 + grid.rows - d["y"])
+            elif delta < 0:
+                y_comp = (48 + grid.rows - d["y"]) - note.note_num
+            x_comp = abs(note.pos - d["x"])
+            y_comp = y_comp % grid.rows
+            note_dist = x_comp**2 + y_comp**2
+            min_dist, closest_note = update_closest_note(note_dist,min_dist,note,closest_note)
+    if closest_note != None:
+        return closest_note
+
+
     # find distance between this note and all notes
     for note in note_manager.notes:
         if delta > 0:
-            y_comp = note.note - (48 + grid.rows - d["y"])
+            y_comp = note.note_num - (48 + grid.rows - d["y"])
         elif delta < 0:
-            y_comp = (48 + grid.rows - d["y"]) - note.note
+            y_comp = (48 + grid.rows - d["y"]) - note.note_num
         x_comp = abs(note.pos - d["x"]) 
         note_dist = x_comp**2 + y_comp**2
         min_dist, closest_note = update_closest_note(note_dist,min_dist,note,closest_note)
@@ -376,8 +403,7 @@ ENC_H_NOTE_SEL = 6
 ENC_V_NOTE_SEL = 1
 XPOS_PUSH_SCALE = 8
 YPOS_PUSH_SCALE = 8
-NEW_NOTE_BUTTON1 = 6
-NEW_NOTE_BUTTON2 = 0
+NEW_NOTE_BUTTON1 = 0
 KNOB_TIME_JOG = 5
 
 # This is called every frame by the GPU.
@@ -388,21 +414,17 @@ def game_loop(d):
     enc_butts = enc.read_all_buttons()
     enc_butts = [1-x for x in enc_butts]  # rev polarity
 
-    # reset
-    if enc_butts[NEW_NOTE_BUTTON1] == 1 and enc_butts[NEW_NOTE_BUTTON2] == 1:
-        tulip.bg_clear(random.choice(grass_colors))
 
     # place musical note
-    elif keeb_mgr.note_add_down_get() == False and \
-            ( enc_butts[NEW_NOTE_BUTTON1] == 1 or enc_butts[NEW_NOTE_BUTTON2] == 1):
-
+    if button_mgr.note_add_down_get() == False \
+        and enc_butts[NEW_NOTE_BUTTON1] == 1:
             f_x, f_y = grid.get_coords(d["x"], d["y"])
             f_x = math.floor( clip( float(f_x + grid.HorizontalSpacing/2 ) , 0, WIDTH-1) )
             f_y = math.floor( clip( float(f_y + grid.VerticalSpacing/2   ) , 0, HEIGHT-1) ) 
-            keeb_mgr.note_add_down_set(True)
+            button_mgr.note_add_down_set(True)
             result = note_manager.add( grid, 
                              pos = d["x"], 
-                             note = 48 + grid.rows - d["y"], 
+                             note_num = 48 + grid.rows - d["y"], 
                              vel = 0.5, 
                              dur = 6 ) 
             if result == "new":
@@ -459,10 +481,11 @@ def game_loop(d):
         if note_sel_dx != 0:
             #print(f'h_note_sel_delta: {note_sel_dx}')
             nearest_note = xaxis_note_select( d, note_sel_dx )   
-            print(f'nearest_note: {nearest_note}, pos={nearest_note.pos}, note={nearest_note.note}, vel={nearest_note.vel}')    
+            #print(f'nearest_note: {nearest_note}, pos={nearest_note.pos}, note_num={nearest_note.note_num}, vel={nearest_note.vel}')    
+            print(f'nearest_note: {nearest_note}')    
             if nearest_note != None:
                 d["x"] = nearest_note.pos   
-                d["y"] = 48 + grid.rows - nearest_note.note
+                d["y"] = 48 + grid.rows - nearest_note.note_num
                 redraw_cursor_plox = 1
             else:
                 print("no nearest note found")
@@ -473,25 +496,25 @@ def game_loop(d):
         if note_sel_dy != 0:
             #print(f'v_note_sel_delta: {note_sel_dy}')
             nearest_note = yaxis_note_select( d, note_sel_dy )   
-            print(f'nearest_note: {nearest_note}, pos={nearest_note.pos}, note={nearest_note.note}, vel={nearest_note.vel}')    
+            print(f'nearest_note: {nearest_note}, pos={nearest_note.pos}, note_num={nearest_note.note_num}, vel={nearest_note.vel}')    
             if nearest_note != None:
                 d["x"] = nearest_note.pos   
-                d["y"] = 48 + grid.rows - nearest_note.note
+                d["y"] = 48 + grid.rows - nearest_note.note_num
                 redraw_cursor_plox = 1
             else:
                 print("no nearest note found")
 
         if redraw_cursor_plox:
             f_x, f_y = grid.get_coords(d["x"], d["y"])
-            f_x = math.floor( clip( float(f_x) + grid.HorizontalSpacing/2, 0, WIDTH-1) )
-            f_y = math.floor( clip( float(f_y) - grid.VerticalSpacing/2, 0, HEIGHT-1) ) 
+            f_x = math.floor( clip( float(f_x) + grid.HorizontalSpacing/2 -1, 0, WIDTH-1) )
+            f_y = math.floor( clip( float(f_y) - grid.VerticalSpacing/2 + 2, 0, HEIGHT-1) ) 
             tulip.sprite_move(0, f_x, f_y)
 
 
-    # obsolete
-    if keeb_mgr.note_add_down_get() == True and \
-        enc_butts[NEW_NOTE_BUTTON1] == 0 and enc_butts[NEW_NOTE_BUTTON2] == 0:
-            keeb_mgr.note_add_down_set(False)
+    # New note button released
+    if button_mgr.note_add_down_get() == True and \
+        enc_butts[NEW_NOTE_BUTTON1] == 0:
+            button_mgr.note_add_down_set(False)
 
     # fill background with noise pattern
     for i in range(10):
@@ -509,6 +532,7 @@ amy.send(voices='0,1,2,3', load_patch=1)
 #amy.send(voices=1, note=55, vel=.5, sequence= "%d,%d,%d" % (0, amy.SEQUENCER_PPQ*4, 999) )
 #amy.send(wave=amy.PCM, patch=35,feedback=.5) 
 #amy.send(osc=0, note=50, vel= 1)
+midi.config.add_synth(channel=5, num_voices=1)
 
 current_beat = int((seq_ticks() / 48) % 4)
 tulip.seq_add_callback(beat_callback, int(amy.SEQUENCER_PPQ))
@@ -534,4 +558,3 @@ tulip.frame_callback()
 tulip.bg_clear()
 tulip.sprite_clear()
 tulip.tfb_start()
-
