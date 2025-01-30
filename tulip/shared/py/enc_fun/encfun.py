@@ -203,6 +203,7 @@ grid = gfun.Grid(start_x=200, start_y=50, width=700, height=500, palette_index=3
 grid.draw()
 cursor_xy_pos = Cursor()  # for position encoders
 cursor_xy_sel = Cursor()  # for selection encoders
+cursor_xy_mod = Cursor()  # for moving position, and note number
 
 def beat_callback(t):
     global app
@@ -390,14 +391,48 @@ def yaxis_note_select( d, delta ):
         min_dist, closest_note = update_closest_note(note_dist,min_dist,note,closest_note)
     return closest_note
 
-KNOB_XPOS = 7
-KNOB_YPOS = 0
-ENC_H_NOTE_SEL = 6
-ENC_V_NOTE_SEL = 1
+def draw_note_at_cursor( d, grid, color ):
+    f_x, f_y = grid.get_coords(d["x"], d["y"])
+    f_x = math.floor( clip( float(f_x + grid.HorizontalSpacing/2 ) , 0, WIDTH-1) )
+    f_y = math.floor( clip( float(f_y + grid.VerticalSpacing/2   ) , 0, HEIGHT-1) ) 
+    tulip.bg_circle(f_x, f_y, math.floor(grid.HorizontalSpacing/3), color, 1)
+
+def calc_new_ppq_in_grid( d, dx, bx ):
+    if bx == 1:
+        cur_col = grid.cols * ( d["x"] / grid.pulses_seen_in_grid )
+        cur_col += dx
+        cur_col = cur_col % grid.cols
+        ppq_in_grid = ( cur_col / grid.cols ) * grid.pulses_seen_in_grid
+    else:
+        ppq_in_grid = d["x"] + dx
+    ppq_in_grid = ppq_in_grid % grid.pulses_seen_in_grid
+    return ppq_in_grid
+
+def move_cursor_x( d, dx, bx ):
+
+    # if bx == 1:
+    #     cur_col = grid.cols * ( d["x"] / grid.pulses_seen_in_grid )
+    #     cur_col += dx
+    #     cur_col = cur_col % grid.cols
+    #     ppq_in_grid = ( cur_col / grid.cols ) * grid.pulses_seen_in_grid
+    # else:
+    #     ppq_in_grid = d["x"] + dx
+    # d["x"] = ppq_in_grid
+    #d["x"] = d["x"] % grid.pulses_seen_in_grid
+    d["x"] = calc_new_ppq_in_grid( d, dx, bx )
+    #print(f'x: {d["x"]}, col: {d["x"]*grid.cols/grid.pulses_seen_in_grid}')
+
+        
+
+ENC_MOD_CURS_XPOS = 7
+ENC_NOTE_SEL_LR = 6
+ENC_MOVE_NOTE_POS = 5
+ENC_TIME_JOG = 4
+ENC_NOTE_SEL_UD = 1
+ENC_MOD_CURS_YPOS = 0
+
 XPOS_PUSH_SCALE = 8
-YPOS_PUSH_SCALE = 8
 NEW_NOTE_BUTTON1 = 0
-KNOB_TIME_JOG = 5
 
 # This is called every frame by the GPU.
 def game_loop(d):
@@ -410,48 +445,35 @@ def game_loop(d):
     # place musical note
     if button_mgr.note_add_down_get() == False \
         and enc_butts[NEW_NOTE_BUTTON1] == 1:
-            f_x, f_y = grid.get_coords(d["x"], d["y"])
-            f_x = math.floor( clip( float(f_x + grid.HorizontalSpacing/2 ) , 0, WIDTH-1) )
-            f_y = math.floor( clip( float(f_y + grid.VerticalSpacing/2   ) , 0, HEIGHT-1) ) 
             button_mgr.note_add_down_set(True)
+
             result = note_manager.add( grid, 
                              pos = d["x"], 
                              note_num = 48 + grid.rows - d["y"], 
                              vel = 0.5, 
                              dur = 6 ) 
+
             if result == "new":
-                tulip.bg_circle(f_x, f_y, math.floor(grid.HorizontalSpacing/3), 1, 1)  
+                draw_note_at_cursor( d, grid, 1 )  
             elif result == "removed":
-                tulip.bg_circle(f_x, f_y, math.floor(grid.HorizontalSpacing/3), d["grass_color"], 1)
+                draw_note_at_cursor( d, grid, bg["grass_color"] )
 
             note_manager.display_notes()    
         
     else:
 
-        # move rabbit fwd/back in time in X.  
-        # note horizontal is in pulses, e.g. out of 48*4
         redraw_cursor_plox = 0
-        dx_pre = enc.read_increment(KNOB_XPOS)
+
+        # move rabbit fwd/back in time in X.  note horizontal is in pulses, e.g. out of 48*4
+        dx_pre = enc.read_increment(ENC_MOD_CURS_XPOS)
         dx = cursor_xy_pos.delta_x(dx_pre)
         if dx != 0:
-            bx = 1 - enc_butts[KNOB_XPOS]  # default bx==1, no button, move one column
-                
-            if bx == 1: # button unpressed, move one column at a time
-                cur_col = grid.cols * ( d["x"] / grid.pulses_seen_in_grid ) 
-                cur_col += dx 
-                cur_col = cur_col % grid.cols
-                ppq_in_grid = ( cur_col / grid.cols ) * grid.pulses_seen_in_grid 
-
-            else:    # button pressed, move one PPQ at a time
-                ppq_in_grid = d["x"] + dx
-
-            d["x"] = ppq_in_grid
-            d["x"] = d["x"] % grid.pulses_seen_in_grid  
-            #print(f'x: {d["x"]}, col: {d["x"]*grid.cols/grid.pulses_seen_in_grid}')
+            bx = 1 - enc_butts[ENC_MOD_CURS_XPOS]  # default bx==1, no button, move one column
+            move_cursor_x( d, dx, bx )
             redraw_cursor_plox = 1
 
         # move rabbit up/down in notespace / Y-axis
-        dy_pre = enc.read_increment(KNOB_YPOS)
+        dy_pre = enc.read_increment(ENC_MOD_CURS_YPOS)
         dy = cursor_xy_pos.delta_y(dy_pre)
         if dy != 0:
             #by = 1 - enc_butts[KNOB_YPOS]  # dont invert button press 
@@ -459,8 +481,38 @@ def game_loop(d):
             d["y"] = d["y"] % grid.rows
             redraw_cursor_plox=1
 
+        # move note in time
+        move_note_pos_pre = enc.read_increment(ENC_MOVE_NOTE_POS)
+        move_note_enc_delta = cursor_xy_mod.delta_x(move_note_pos_pre)
+        if move_note_enc_delta != 0:
+            print(f'move_note_delta: {move_note_enc_delta}')
+            # change notes position
+            # find note at cursor's position
+            for note in note_manager.notes:
+                if note.pos == d["x"] and note.note_num == 48 + grid.rows - d["y"]:
+                    
+                    temp_note = note # make a temp copy
+                    draw_note_at_cursor( d, grid, bg["grass_color"] )  # erase current note
+
+                    # re-add to make it go away in note manager and sequencer
+                    note_manager.add( grid, note.pos, note.note_num, note.vel, note.dur )
+                    
+                    # modify note position
+                    temp_note.pos = calc_new_ppq_in_grid( d, move_note_enc_delta, 1 )    
+
+                    # re-add note to note manager
+                    note_manager.add( grid, temp_note.pos, temp_note.note_num, temp_note.vel, temp_note.dur )
+
+                    # update cursor pos and redraw at new positoin
+                    d["x"] = temp_note.pos
+                    draw_note_at_cursor( d, grid, 1 )  
+                    redraw_cursor_plox = 1
+
+                    break           
+                        
+
         # time jog
-        jog_amount = enc.read_increment(KNOB_TIME_JOG)
+        jog_amount = enc.read_increment(ENC_TIME_JOG)
         if jog_amount != 0:
             d["time_disp_start"] += jog_amount
             print(f"jog_amount: {jog_amount} time_disp_start: {d['time_disp_start']}")              
@@ -468,7 +520,7 @@ def game_loop(d):
                 tulip.bg_scroll_x_offset(math.floor( row), math.floor( d["time_disp_start"]) )
 
         # select note left/right
-        note_sel_pre = enc.read_increment(ENC_H_NOTE_SEL)
+        note_sel_pre = enc.read_increment(ENC_NOTE_SEL_LR)
         note_sel_dx = cursor_xy_sel.delta_x(note_sel_pre)
         if note_sel_dx != 0:
             #print(f'h_note_sel_delta: {note_sel_dx}')
@@ -483,7 +535,7 @@ def game_loop(d):
                 print("no nearest note found")
 
         # select note up/down
-        note_sel_pre = enc.read_increment(ENC_V_NOTE_SEL)
+        note_sel_pre = enc.read_increment(ENC_NOTE_SEL_UD)
         note_sel_dy = cursor_xy_sel.delta_y(note_sel_pre)
         if note_sel_dy != 0:
             #print(f'v_note_sel_delta: {note_sel_dy}')
