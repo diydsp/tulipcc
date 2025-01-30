@@ -128,19 +128,7 @@ class NoteManager():
     def display_notes(self):
         print(self.notes)
 
-# looks not used anymore
-#class EncVal():
-#    def __init__(self):
-#        self.prev = [0] * 8
-#       enc.read_all_increments()  # clear out values
-#
-#   def set(self, idx, val):
-#        self.prev[idx] = val
-#
-#    def get(self):
-#        return self.prv_pos
-    
-
+   
 
 class ButtonManager():
     """Keep track of which encoders' buttons were last measured down.  Good for detecting changes.
@@ -320,23 +308,10 @@ def update_closest_note(note_dist,min_dist,note,closest_note):
 
 def xaxis_note_select( d, delta ):
     
-    # 1. first find closest note in this row
     min_dist = 1000000000
     closest_note = None
-    for note in note_manager.notes:
-        if note.note_num == 48 + grid.rows - d["y"]:
-            if delta > 0:
-                x_comp = note.pos - d["x"]   
-            elif delta < 0:
-                x_comp = d["x"] - note.pos
-            x_comp = x_comp % grid.pulses_seen_in_grid 
-            note_dist = x_comp**2 
-            min_dist, closest_note = update_closest_note(note_dist,min_dist,note,closest_note)
-    if closest_note != None:
-        return closest_note
 
-    # 2. seek closet note from curs y pos, but not including any currently at the cursor's column.
-    print('x_note_sel stage 2')
+    # 1. seek closet note from curs y pos, but not including any currently at the cursor's column.
     for note in note_manager.notes:
         if note.pos != d["x"]:
             if delta > 0:
@@ -347,15 +322,31 @@ def xaxis_note_select( d, delta ):
             y_comp = abs(note.note_num - (48 + grid.rows - d["y"])) 
             note_dist = x_comp**2 + y_comp**2
             min_dist, closest_note = update_closest_note(note_dist,min_dist,note,closest_note)
-    
+
+    if closest_note != None:
+        return closest_note
+
+    # 2. first find closest note in this row
+    print('x_note_sel stage 2')
+    for note in note_manager.notes:
+        if note.note_num == 48 + grid.rows - d["y"]:
+            if delta > 0:
+                x_comp = note.pos - d["x"]   
+            elif delta < 0:
+                x_comp = d["x"] - note.pos
+            x_comp = x_comp % grid.pulses_seen_in_grid 
+            note_dist = x_comp**2 
+            min_dist, closest_note = update_closest_note(note_dist,min_dist,note,closest_note)
+
     return closest_note
 
 def yaxis_note_select( d, delta ):
     
-    # 1. seek closest note at curs x position. aka time at the ppq scale/column 
-    # look up and down the pitch axis for the closest note
     min_dist = 1000000000
     closest_note = None
+
+    # 1. seek closest note at curs x position. aka time at the ppq scale/column 
+    # look up and down the pitch axis for the closest note
     for note in note_manager.notes: 
         if note.pos == d["x"]:
             if delta > 0:
@@ -365,6 +356,7 @@ def yaxis_note_select( d, delta ):
             y_comp = y_comp % grid.rows
             note_dist = y_comp**2
             min_dist, closest_note = update_closest_note(note_dist,min_dist,note,closest_note)
+    
     if closest_note != None:
         return closest_note
 
@@ -382,11 +374,12 @@ def yaxis_note_select( d, delta ):
             y_comp = y_comp % grid.rows
             note_dist = x_comp**2 + y_comp**2
             min_dist, closest_note = update_closest_note(note_dist,min_dist,note,closest_note)
+
     if closest_note != None:
         return closest_note
 
-
-    # find distance between this note and all notes
+    # 3. find distance between this note and all notes
+    print("y_note_sel stage 3")
     for note in note_manager.notes:
         if delta > 0:
             y_comp = note.note_num - (48 + grid.rows - d["y"])
@@ -413,7 +406,6 @@ def game_loop(d):
     
     enc_butts = enc.read_all_buttons()
     enc_butts = [1-x for x in enc_butts]  # rev polarity
-
 
     # place musical note
     if button_mgr.note_add_down_get() == False \
