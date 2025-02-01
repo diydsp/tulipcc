@@ -37,13 +37,13 @@ tulip.bg_clear( bg['grass_color'] )
 # display UI hints
 hints = [
     "[ H. Pos. ]",
-    "    [  ] ",  # H. Sel.
+    "[ H. Sel. ]",  # H. Sel.
     "    [  ] ",  # Duration
     "    [  ] ",  # Timing
 
     "    [  ] ",   # Row
     "    [  ] ",   # Velocity
-    "    [  ] ",   # V. Sel.
+    "[ V. Sel. ]",   # V. Sel.
     "[ V. Pos. / Add ]",
 ]
 
@@ -428,6 +428,7 @@ ENC_MOD_CURS_XPOS = 7
 ENC_NOTE_SEL_LR = 6
 ENC_MOVE_NOTE_POS = 5
 ENC_TIME_JOG = 4
+ENC_MOVE_NOTE_NUM = 2
 ENC_NOTE_SEL_UD = 1
 ENC_MOD_CURS_YPOS = 0
 
@@ -510,6 +511,35 @@ def game_loop(d):
 
                     break           
                         
+        # move note in pitch
+        move_note_num_pre = enc.read_increment(ENC_MOVE_NOTE_NUM)
+        move_note_enc_delta = cursor_xy_mod.delta_y(move_note_num_pre)
+        if move_note_enc_delta != 0:
+            print(f'move_note_delta: {move_note_enc_delta}')
+            # change notes position
+            # find note at cursor's position
+            for note in note_manager.notes:
+                if note.pos == d["x"] and note.note_num == 48 + grid.rows - d["y"]:
+                    
+                    temp_note = note
+                    draw_note_at_cursor( d, grid, bg["grass_color"] )  # erase current note
+
+                    # re-add to make it go away in note manager and sequencer
+                    note_manager.add( grid, note.pos, note.note_num, note.vel, note.dur )
+
+                    # modify note number
+                    temp_note.note_num += move_note_enc_delta
+
+                    # re-add note to note manager
+                    note_manager.add( grid, temp_note.pos, temp_note.note_num, temp_note.vel, temp_note.dur )   
+
+                    # update cursor pos and redraw at new positoin
+                    d["y"] = 48 + grid.rows - temp_note.note_num
+                    draw_note_at_cursor( d, grid, 1 )
+                    redraw_cursor_plox = 1
+
+                    break
+
 
         # time jog
         jog_amount = enc.read_increment(ENC_TIME_JOG)
