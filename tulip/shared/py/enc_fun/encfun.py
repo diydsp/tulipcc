@@ -435,17 +435,15 @@ def move_cursor_x( d, dx, bx ):
     #print(f'x: {d["x"]}, col: {d["x"]*grid.cols/grid.pulses_seen_in_grid}')
 
 
-
+# map encoders to functions
 ENC_MOD_CURS_XPOS = 7
-ENC_NOTE_SEL_LR = 6
+ENC_NOTE_SEL_LR   = 6
 ENC_MOVE_NOTE_POS = 5
-ENC_TIME_JOG = 4
+ENC_TIME_JOG      = 4
 ENC_MOVE_NOTE_NUM = 2
-ENC_NOTE_SEL_UD = 1
+ENC_NOTE_SEL_UD   = 1
 ENC_MOD_CURS_YPOS = 0
-
-XPOS_PUSH_SCALE = 8
-NEW_NOTE_BUTTON1 = 0
+NEW_NOTE_BUTTON1  = 0
 
 # This is called every frame by the GPU.
 def game_loop(d):
@@ -474,7 +472,8 @@ def game_loop(d):
             note_manager.display_notes()    
         
     else:
-
+        # move cursor around
+        
         redraw_cursor_plox = 0
 
         # move rabbit fwd/back in time in X.  note horizontal is in pulses, e.g. out of 48*4
@@ -498,6 +497,9 @@ def game_loop(d):
         move_note_pos_pre = enc.read_increment(ENC_MOVE_NOTE_POS)
         move_note_enc_delta = reducer_xy_mod.delta_x(move_note_pos_pre)
         if move_note_enc_delta != 0:
+
+            bx = 1 - enc_butts[ENC_MOVE_NOTE_POS]  # default bx==1, no button, move one column
+            
             print(f'move_note_delta: {move_note_enc_delta}')
             # change notes position
             # find note at cursor's position
@@ -511,7 +513,7 @@ def game_loop(d):
                     note_manager.add( grid, note.pos, note.note_num, note.vel, note.dur )
                     
                     # modify note position
-                    temp_note.pos = calc_new_ppq_in_grid( d, move_note_enc_delta, 1 )    
+                    temp_note.pos = calc_new_ppq_in_grid( d, move_note_enc_delta, bx )    
 
                     # re-add note to note manager
                     note_manager.add( grid, temp_note.pos, temp_note.note_num, temp_note.vel, temp_note.dur )
