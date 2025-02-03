@@ -143,7 +143,7 @@ class ButtonManager():
         self.note_add_down = val    
 
 
-class Cursor():
+class Reducer():
     """Make up for the fact that encoders move two values for every physical step"""
     def __init__(self):
         self.x = 0
@@ -180,15 +180,23 @@ class Cursor():
                 return 0
 
 
+def redraw_cursor( d, grid, color ):
+    f_x, f_y = grid.get_coords(d["x"], d["y"])
+    f_x = math.floor( clip( float(f_x) + grid.HorizontalSpacing/2 -1, 0, WIDTH-1) )
+    f_y = math.floor( clip( float(f_y) - grid.VerticalSpacing/2 + 2, 0, HEIGHT-1) ) 
+    tulip.sprite_move(0, f_x, f_y)
+
+
 half_rabbit_w = math.floor(rabbit_w / 2)
 half_rabbit_h = math.floor(rabbit_h / 2)
 
 # Register the first frame, we'll swap out frames during animation
 # sprite_register(self.sprite_id,self.mem_pos, self.width, self.height)
 tulip.sprite_register(0,0, rabbit_w, rabbit_h)
-tulip.sprite_move(0, 
-                  math.floor(WIDTH/2) - half_rabbit_w, 
-                  math.floor(HEIGHT/2) - half_rabbit_h)
+# not good idea to turn on sprite here, it will be turned on in game loop
+# tulip.sprite_move(0, 
+#                   math.floor(WIDTH/2) - half_rabbit_w, 
+#                  math.floor(HEIGHT/2) - half_rabbit_h)
 tulip.sprite_on(0)
 
 tulip.sprite_register(1,0, rabbit_w, rabbit_h)
@@ -201,9 +209,13 @@ button_mgr = ButtonManager()
 grid = gfun.Grid(start_x=200, start_y=50, width=700, height=500, palette_index=3,
                  cols=32,  rows=25, visible_quarter_notes=4,seq_ppq=amy.SEQUENCER_PPQ) 
 grid.draw()
-cursor_xy_pos = Cursor()  # for position encoders
-cursor_xy_sel = Cursor()  # for selection encoders
-cursor_xy_mod = Cursor()  # for moving position, and note number
+
+redraw_cursor( seq_edit, grid, color = 1 )
+
+
+reducer_xy_pos = Reducer()  # for position encoders
+reducer_xy_sel = Reducer()  # for selection encoders
+reducer_xy_mod = Reducer()  # for moving position, and note number
 
 def beat_callback(t):
     global app
@@ -268,10 +280,10 @@ def seq_transport_cmd( cmd ):
 
 def seq_cursor( dir ):
 
-    if dir == "up": cursor_xy_pos.delta_y(-1)
-    elif dir == "down": cursor_xy_pos.delta_y(1)
-    elif dir == "left": cursor_xy_pos.delta_x(-1)
-    elif dir == "right": cursor_xy_pos.delta_x(1)
+    if dir == "up": reducer_xy_pos.delta_y(-1)
+    elif dir == "down": reducer_xy_pos.delta_y(1)
+    elif dir == "left": reducer_xy_pos.delta_x(-1)
+    elif dir == "right": reducer_xy_pos.delta_x(1)
     else: print("unhandled cursor dir: %s" % (dir))
 
 
@@ -422,7 +434,7 @@ def move_cursor_x( d, dx, bx ):
     d["x"] = calc_new_ppq_in_grid( d, dx, bx )
     #print(f'x: {d["x"]}, col: {d["x"]*grid.cols/grid.pulses_seen_in_grid}')
 
-        
+
 
 ENC_MOD_CURS_XPOS = 7
 ENC_NOTE_SEL_LR = 6
@@ -467,7 +479,7 @@ def game_loop(d):
 
         # move rabbit fwd/back in time in X.  note horizontal is in pulses, e.g. out of 48*4
         dx_pre = enc.read_increment(ENC_MOD_CURS_XPOS)
-        dx = cursor_xy_pos.delta_x(dx_pre)
+        dx = reducer_xy_pos.delta_x(dx_pre)
         if dx != 0:
             bx = 1 - enc_butts[ENC_MOD_CURS_XPOS]  # default bx==1, no button, move one column
             move_cursor_x( d, dx, bx )
@@ -475,7 +487,7 @@ def game_loop(d):
 
         # move rabbit up/down in notespace / Y-axis
         dy_pre = enc.read_increment(ENC_MOD_CURS_YPOS)
-        dy = cursor_xy_pos.delta_y(dy_pre)
+        dy = reducer_xy_pos.delta_y(dy_pre)
         if dy != 0:
             #by = 1 - enc_butts[KNOB_YPOS]  # dont invert button press 
             d["y"] -= dy
@@ -484,7 +496,7 @@ def game_loop(d):
 
         # move note in time
         move_note_pos_pre = enc.read_increment(ENC_MOVE_NOTE_POS)
-        move_note_enc_delta = cursor_xy_mod.delta_x(move_note_pos_pre)
+        move_note_enc_delta = reducer_xy_mod.delta_x(move_note_pos_pre)
         if move_note_enc_delta != 0:
             print(f'move_note_delta: {move_note_enc_delta}')
             # change notes position
@@ -513,7 +525,7 @@ def game_loop(d):
                         
         # move note in pitch
         move_note_num_pre = enc.read_increment(ENC_MOVE_NOTE_NUM)
-        move_note_enc_delta = cursor_xy_mod.delta_y(move_note_num_pre)
+        move_note_enc_delta = reducer_xy_mod.delta_y(move_note_num_pre)
         if move_note_enc_delta != 0:
             print(f'move_note_delta: {move_note_enc_delta}')
             # change notes position
@@ -551,7 +563,7 @@ def game_loop(d):
 
         # select note left/right
         note_sel_pre = enc.read_increment(ENC_NOTE_SEL_LR)
-        note_sel_dx = cursor_xy_sel.delta_x(note_sel_pre)
+        note_sel_dx = reducer_xy_sel.delta_x(note_sel_pre)
         if note_sel_dx != 0:
             #print(f'h_note_sel_delta: {note_sel_dx}')
             nearest_note = xaxis_note_select( d, note_sel_dx )   
@@ -566,7 +578,7 @@ def game_loop(d):
 
         # select note up/down
         note_sel_pre = enc.read_increment(ENC_NOTE_SEL_UD)
-        note_sel_dy = cursor_xy_sel.delta_y(note_sel_pre)
+        note_sel_dy = reducer_xy_sel.delta_y(note_sel_pre)
         if note_sel_dy != 0:
             #print(f'v_note_sel_delta: {note_sel_dy}')
             nearest_note = yaxis_note_select( d, note_sel_dy )   
@@ -577,12 +589,15 @@ def game_loop(d):
                 redraw_cursor_plox = 1
             else:
                 print("no nearest note found")
+        
 
         if redraw_cursor_plox:
-            f_x, f_y = grid.get_coords(d["x"], d["y"])
-            f_x = math.floor( clip( float(f_x) + grid.HorizontalSpacing/2 -1, 0, WIDTH-1) )
-            f_y = math.floor( clip( float(f_y) - grid.VerticalSpacing/2 + 2, 0, HEIGHT-1) ) 
-            tulip.sprite_move(0, f_x, f_y)
+            redraw_cursor( d, grid, 1 )
+
+            # f_x, f_y = grid.get_coords(d["x"], d["y"])
+            # f_x = math.floor( clip( float(f_x) + grid.HorizontalSpacing/2 -1, 0, WIDTH-1) )
+            # f_y = math.floor( clip( float(f_y) - grid.VerticalSpacing/2 + 2, 0, HEIGHT-1) ) 
+            # tulip.sprite_move(0, f_x, f_y)
 
 
     # New note button released
