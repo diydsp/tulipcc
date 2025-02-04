@@ -97,15 +97,33 @@ class NoteManager():
         self.notes = []
         self.note_index = 1
         
+    def remove_note_cmds_from_amy_seq(self, note ):
+        amy.send(sequence= ",,%d" % (note.note_index) )    # remove note-on from sequencer
+        amy.send(sequence= ",,%d" % (note.note_index+1) )    # remove note-off from sequencer
+        return "new"
+
+    def add_note_cmds_to_amy_seq( self, note_num, vel, pos, dur, grid, note_index ):
+
+        amy.send(voices=1, note=note_num, vel=vel, sequence= "%d,%d,%d" % (pos, grid.pulses_seen_in_grid, note_index) )
+        note_off_pos = ( pos + dur ) % grid.pulses_seen_in_grid
+        amy.send(voices=1, note=note_num, vel=0, sequence= "%d,%d,%d" % (note_off_pos, grid.pulses_seen_in_grid, note_index+1) )    
+
+        # amy.send(voices=1, note=note.note_num, vel=note.vel, sequence= "%d,%d,%d" % (note.pos, grid.pulses_seen_in_grid, note.note_index) )
+        # note_off_pos = ( note.pos + note.dur ) % grid.pulses_seen_in_grid
+        # amy.send(voices=1, note=note.note_num, vel=0, sequence= "%d,%d,%d" % (note_off_pos, grid.pulses_seen_in_grid, note.note_index+1) )  
+
     def add(self, grid, pos, note_num, vel, dur):
         
         # check if note already exists
-        for n in self.notes:
-            if n.pos == pos and n.note_num == note_num:
+        for note in self.notes:
+            if note.pos == pos and note.note_num == note_num:
                 print("note already exists")
-                self.notes.remove(n)     # remove note from data struct
-                amy.send(sequence= ",,%d" % (n.note_index) )    # remove note-on from sequencer
-                amy.send(sequence= ",,%d" % (n.note_index+1) )    # remove note-off from sequencer
+                self.notes.remove(note)     # remove note from data struct
+
+                self.remove_note_cmds_from_amy_seq( note ) # remove note from sequencer
+
+                #amy.send(sequence= ",,%d" % (note.note_index) )    # remove note-on from sequencer
+                #amy.send(sequence= ",,%d" % (note.note_index+1) )    # remove note-off from sequencer
                 return "removed"
 
         # store in data struct
@@ -118,10 +136,11 @@ class NoteManager():
             #self.notes.sort(key=attrgetter("pos", "note_num"))  # attrgetter not available
  
         # write into sequencer
-        amy.send(voices=1, note=note_num, vel=vel, sequence= "%d,%d,%d" % (pos, grid.pulses_seen_in_grid, self.note_index) )
-        self.note_index += 1
-        note_off_pos = ( pos + dur ) % grid.pulses_seen_in_grid
-        amy.send(voices=1, note=note_num, vel=0, sequence= "%d,%d,%d" % (note_off_pos, grid.pulses_seen_in_grid, self.note_index) )  
+        self.add_note_cmds_to_amy_seq( note_num, vel, pos, dur, grid, self.note_index) 
+        # amy.send(voices=1, note=note_num, vel=vel, sequence= "%d,%d,%d" % (pos, grid.pulses_seen_in_grid, self.note_index) )
+        # self.note_index += 1
+        # note_off_pos = ( pos + dur ) % grid.pulses_seen_in_grid
+        # amy.send(voices=1, note=note_num, vel=0, sequence= "%d,%d,%d" % (note_off_pos, grid.pulses_seen_in_grid, self.note_index) )  
         return "new"
 
 
@@ -403,11 +422,18 @@ def yaxis_note_select( d, delta ):
         min_dist, closest_note = update_closest_note(note_dist,min_dist,note,closest_note)
     return closest_note
 
+def draw_note_at_coords( x, y, grid, color ):
+    x = math.floor( clip( float(x) + grid.HorizontalSpacing/2 -1, 0, WIDTH-1) )
+    y = math.floor( clip( float(y) - grid.VerticalSpacing/2 + 2, 0, HEIGHT-1) ) 
+    tulip.bg_circle(x, y, math.floor(grid.HorizontalSpacing/3), color, 1)
+
 def draw_note_at_cursor( d, grid, color ):
     f_x, f_y = grid.get_coords(d["x"], d["y"])
-    f_x = math.floor( clip( float(f_x + grid.HorizontalSpacing/2 ) , 0, WIDTH-1) )
-    f_y = math.floor( clip( float(f_y + grid.VerticalSpacing/2   ) , 0, HEIGHT-1) ) 
-    tulip.bg_circle(f_x, f_y, math.floor(grid.HorizontalSpacing/3), color, 1)
+    draw_note_at_coords( f_x, f_y, grid, color )  
+
+    #f_x = math.floor( clip( float(f_x + grid.HorizontalSpacing/2 ) , 0, WIDTH-1) )
+    #f_y = math.floor( clip( float(f_y + grid.VerticalSpacing/2   ) , 0, HEIGHT-1) ) 
+    #tulip.bg_circle(f_x, f_y, math.floor(grid.HorizontalSpacing/3), color, 1)
 
 def calc_new_ppq_in_grid( start_pos, dx, bx ):
     if bx == 1:
@@ -489,31 +515,28 @@ def select_note_in_time( d, grid, note_sel_dx ):
         print("no nearest note found")
         return False
 
-def rotate_note_in_time( d, grid, note, note_move_dx ):   
-    temp_note = note # make a temp copy
-    draw_note_at_cursor( d, grid, bg["grass_color"] )  # erase current note
-    
-    # re-add to make it go away in note manager and sequencer
-    note_manager.add( grid, note.pos, note.note_num, note.vel, note.dur )
-    
-    # modify note position
-    temp_note.pos = calc_new_ppq_in_grid( temp_note.pos, note_move_dx, 1 )  
-    #temp_note.pos = ( ppq + note_move_dx ) % grid.pulses_seen_in_grid
 
-    # re-add note to note manager
-    note_manager.add( grid, temp_note.pos, temp_note.note_num, temp_note.vel, temp_note.dur )
+def rotate_note_in_time( grid, note, note_move_dx ):       
+
+    note_manager.remove_note_cmds_from_amy_seq( note )   # remove note from amy sequencer
+
+    x,y = grid.get_coords( note.pos, 48 + grid.rows - note.note_num ) 
+    draw_note_at_coords( x, y, grid, bg["grass_color"] )  # erase note
+
+    note.pos = calc_new_ppq_in_grid( note.pos, note_move_dx, 1 ) # modify note position in grid
+
+    x,y = grid.get_coords( note.pos, 48 + grid.rows - note.note_num ) 
+    draw_note_at_coords( x, y, grid, 1 )  # draw note
+
+    note_manager.add_note_cmds_to_amy_seq( note.note_num, note.vel, note.pos, note.dur, grid, note.note_index ) # add note to amy sequencer
 
 
-def rotate_notes_in_time( d, grid, note_move_dx ):
-    
+
+def rotate_notes_in_time( d, grid, note_move_dx ):    
     for note in note_manager.notes:
-        rotate_note_in_time(d, grid, note, note_move_dx)
-
-    #first_note=note_manager.notes[0]
+        rotate_note_in_time( grid, note, note_move_dx )
     
-
-
-    
+  
 
 
 
