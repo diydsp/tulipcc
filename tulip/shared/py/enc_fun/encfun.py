@@ -75,6 +75,7 @@ seq_edit = {   "x":0.0, "y":0,
         "transport":"playing",
         "tempo":108,
         "grass_color": bg["grass_color"],
+        "patch":0,
         }
 
 # Draw a line of pixels up top with random colors
@@ -103,14 +104,11 @@ class NoteManager():
         return "new"
 
     def add_note_cmds_to_amy_seq( self, note_num, vel, pos, dur, grid, note_index ):
-
+        
         amy.send(voices=1, note=note_num, vel=vel, sequence= "%d,%d,%d" % (pos, grid.pulses_seen_in_grid, note_index) )
+        #amy.send(voices=1, note=note_num, vel=vel, sequence= "%d,%d,%d" % (pos, grid.pulses_seen_in_grid, note_index) )
         note_off_pos = ( pos + dur ) % grid.pulses_seen_in_grid
         amy.send(voices=1, note=note_num, vel=0, sequence= "%d,%d,%d" % (note_off_pos, grid.pulses_seen_in_grid, note_index+1) )    
-
-        # amy.send(voices=1, note=note.note_num, vel=note.vel, sequence= "%d,%d,%d" % (note.pos, grid.pulses_seen_in_grid, note.note_index) )
-        # note_off_pos = ( note.pos + note.dur ) % grid.pulses_seen_in_grid
-        # amy.send(voices=1, note=note.note_num, vel=0, sequence= "%d,%d,%d" % (note_off_pos, grid.pulses_seen_in_grid, note.note_index+1) )  
 
     def add(self, grid, pos, note_num, vel, dur):
         
@@ -209,15 +207,13 @@ def redraw_cursor( d, grid, color ):
 half_rabbit_w = math.floor(rabbit_w / 2)
 half_rabbit_h = math.floor(rabbit_h / 2)
 
-# Register the first frame, we'll swap out frames during animation
+# cursor
 # sprite_register(self.sprite_id,self.mem_pos, self.width, self.height)
 tulip.sprite_register(0,0, rabbit_w, rabbit_h)
 # not good idea to turn on sprite here, it will be turned on in game loop
-# tulip.sprite_move(0, 
-#                   math.floor(WIDTH/2) - half_rabbit_w, 
-#                  math.floor(HEIGHT/2) - half_rabbit_h)
 tulip.sprite_on(0)
 
+# chaser rabbit
 tulip.sprite_register(1,0, rabbit_w, rabbit_h)
 tulip.sprite_move(1, math.floor(WIDTH/2) - half_rabbit_w, 0)
 tulip.sprite_on(1)
@@ -273,7 +269,6 @@ def seq_transport_cmd( cmd ):
         if seq_edit["transport"] == "playing":
             seq_edit["transport"] = "paused"
             amy.send(tempo=0) # literally pause seq
-            #amy.send(tempo=1) 
 
         elif seq_edit["transport"] == "paused":
             seq_edit["transport"] = "playing"
@@ -293,7 +288,6 @@ def seq_transport_cmd( cmd ):
 
         else:
             seq_edit["transport"] == "paused"
-            #amy.send(tempo=1) 
             amy.send(tempo=0) # literally pause seq
     print(f'transport: {seq_edit["transport"]}')
 
@@ -305,6 +299,21 @@ def seq_cursor( dir ):
     elif dir == "right": reducer_xy_pos.delta_x(1)
     else: print("unhandled cursor dir: %s" % (dir))
 
+patch_x = 25
+patch_y = 200 + 32 * 1
+patch_color=0
+    
+
+def patch_delta( patch_delta ):
+    temp = seq_edit["patch"] + patch_delta
+    temp = clip(temp, 0, 9999)
+    seq_edit["patch"] = temp
+    print('patch: %d' % (temp))
+    amy.send(voices=1,load_patch=temp)
+    # rectangle draws downwards, text draws upwards, so offset it
+    tulip.bg_rect(patch_x,patch_y, 12*7,28, seq_edit['grass_color'], 1 )
+    tulip.bg_str( f'Patch: {temp}', patch_x+3, patch_y+16,          patch_color, 2)
+
 
 def process_key( key ):
     global seq_edit
@@ -313,8 +322,11 @@ def process_key( key ):
     if key == 32: seq_transport_cmd( "toggle")        
         
     # cursor keys
-    elif key == 259: seq_cursor("up")
-    elif key == 258: seq_cursor("down")  
+    elif key == 259:  # up
+        patch_delta(1)
+    elif key == 258:  # down
+        patch_delta(-1)
+
     elif key == 260: seq_cursor("left")  
     elif key == 261: seq_cursor("right") 
 
@@ -337,6 +349,7 @@ def update_closest_note(note_dist,min_dist,note,closest_note):
             min_dist = note_dist
             closest_note = note
     return min_dist, closest_note
+
 
 def xaxis_note_select( d, delta ):
     
@@ -423,8 +436,10 @@ def yaxis_note_select( d, delta ):
     return closest_note
 
 def draw_note_at_coords( x, y, grid, color ):
-    x = math.floor( clip( float(x) + grid.HorizontalSpacing/2 -1, 0, WIDTH-1) )
-    y = math.floor( clip( float(y) - grid.VerticalSpacing/2 + 2, 0, HEIGHT-1) ) 
+    x = math.floor( clip( float(x + grid.HorizontalSpacing / 2 ), 0, WIDTH-1) )
+    y = math.floor( clip( float(y + grid.VerticalSpacing / 2 ), 0, HEIGHT-1) ) 
+    #x = math.floor( clip( float(x) + grid.HorizontalSpacing/2 -1, 0, WIDTH-1) )
+    #y = math.floor( clip( float(y) - grid.VerticalSpacing/2 + 2, 0, HEIGHT-1) ) 
     tulip.bg_circle(x, y, math.floor(grid.HorizontalSpacing/3), color, 1)
 
 def draw_note_at_cursor( d, grid, color ):
