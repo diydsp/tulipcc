@@ -106,10 +106,9 @@ class NoteManager():
     def add_note_cmds_to_amy_seq( self, note_num, vel, pos, dur, grid, note_index ):
         
         amy.send(voices=1, note=note_num, vel=vel, sequence= "%d,%d,%d" % (pos, grid.pulses_seen_in_grid, note_index) )
-        #amy.send(voices=1, note=note_num, vel=vel, sequence= "%d,%d,%d" % (pos, grid.pulses_seen_in_grid, note_index) )
         note_off_pos = ( pos + dur ) % grid.pulses_seen_in_grid
         amy.send(voices=1, note=note_num, vel=0, sequence= "%d,%d,%d" % (note_off_pos, grid.pulses_seen_in_grid, note_index+1) )    
-
+        print(f'on:{note_num} ({note_index})@{pos},, off:({note_index+1})@{note_off_pos}')
     def add(self, grid, pos, note_num, vel, dur):
         
         # check if note already exists
@@ -124,8 +123,8 @@ class NoteManager():
                 #amy.send(sequence= ",,%d" % (note.note_index+1) )    # remove note-off from sequencer
                 return "removed"
 
-        # store in data struct
-        self.note_index += 1
+        # store in Note Manager
+        self.note_index += 2 # 0 offset = note on, 1 offset = note off
         new_note = Note(pos, note_num, vel, dur, self.note_index)
         self.notes.append(new_note)
         # sort for easier display.  
@@ -337,6 +336,10 @@ def process_key( key ):
     elif key== 25:seq_tempo_delta(1)
     elif key == 22:seq_tempo_delta(-1)
 
+    # see if 
+    elif tullp.keys[0] == 1 and tulip.keys[1] == 30:   # ctrl-1
+        pass
+
     else:   
         print("unhandled key: %d" % (key))
         print(f'{tulip.keys()}')
@@ -372,7 +375,7 @@ def xaxis_note_select( d, delta ):
         return closest_note
 
     # 2. first find closest note in this row
-    print('x_note_sel stage 2')
+    #print('x_note_sel stage 2')
     for note in note_manager.notes:
         if note.note_num == 48 + grid.rows - d["y"]:
             if delta > 0:
@@ -500,21 +503,24 @@ def move_note_in_pitch( d, grid, move_note_enc_delta, enc_butts ):
     for note in note_manager.notes:
         if note.pos == d["x"] and note.note_num == 48 + grid.rows - d["y"]:
             
-            temp_note = note
             draw_note_at_cursor( d, grid, bg["grass_color"] )  # erase current note
 
-            # re-add to make it go away in note manager and sequencer
-            note_manager.add( grid, note.pos, note.note_num, note.vel, note.dur )
-
-            # modify note number
-            temp_note.note_num += move_note_enc_delta
-
-            # re-add note to note manager
-            note_manager.add( grid, temp_note.pos, temp_note.note_num, temp_note.vel, temp_note.dur )   
+            note_manager.remove_note_cmds_from_amy_seq( note )   # remove note from amy sequencer
+            note.note_num += move_note_enc_delta  # modify note number
+            note_manager.add_note_cmds_to_amy_seq( note.note_num, note.vel, note.pos, note.dur, grid, note.note_index ) # add note to amy sequencer
 
             # update cursor pos and redraw at new positoin
-            d["y"] = 48 + grid.rows - temp_note.note_num
+            d["y"] = 48 + grid.rows - note.note_num
             draw_note_at_cursor( d, grid, 1 )
+
+
+
+
+            # re-add to make it go away in note manager and sequencer
+            #note_manager.add( grid, note.pos, note.note_num, note.vel, note.dur )
+            # re-add note to note manager
+            #note_manager.add( grid, temp_note.pos, temp_note.note_num, temp_note.vel, temp_note.dur )   
+
             return True # redraw_cursor_plox = 1
 
     return False
@@ -527,7 +533,7 @@ def select_note_in_time( d, grid, note_sel_dx ):
         d["y"] = 48 + grid.rows - nearest_note.note_num
         return True #
     else:
-        print("no nearest note found")
+        #print("no nearest note found")
         return False
 
 
