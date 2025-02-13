@@ -108,8 +108,9 @@ class NoteManager():
         amy.send(voices=1, note=note_num, vel=vel, sequence= "%d,%d,%d" % (pos, grid.pulses_seen_in_grid, note_index) )
         note_off_pos = ( pos + dur ) % grid.pulses_seen_in_grid
         amy.send(voices=1, note=note_num, vel=0, sequence= "%d,%d,%d" % (note_off_pos, grid.pulses_seen_in_grid, note_index+1) )    
-        print(f'on:{note_num} ({note_index})@{pos},, off:({note_index+1})@{note_off_pos}')
-    def add(self, grid, pos, note_num, vel, dur):
+        #print(f'on:{note_num} ({note_index})@{pos},, off:({note_index+1})@{note_off_pos}')
+
+    def toggle_in_note_mgr_and_amy_seq(self, grid, pos, note_num, vel, dur):
         
         # check if note already exists
         for note in self.notes:
@@ -317,6 +318,8 @@ def patch_delta( patch_delta ):
 def process_key( key ):
     global seq_edit
 
+    tulip_keys = tulip.keys()
+
     # space
     if key == 32: seq_transport_cmd( "toggle")        
         
@@ -337,12 +340,13 @@ def process_key( key ):
     elif key == 22:seq_tempo_delta(-1)
 
     # see if 
-    elif tullp.keys[0] == 1 and tulip.keys[1] == 30:   # ctrl-1
+    elif tulip_keys[0] == 1 and tulip_keys[1] == 30:   # ctrl-1
+        print
         pass
 
     else:   
         print("unhandled key: %d" % (key))
-        print(f'{tulip.keys()}')
+        print(f'{tulip_keys}')
 
 def update_closest_note(note_dist,min_dist,note,closest_note):
     # find closet one, but not including one currently at the cursor's position.  
@@ -460,7 +464,8 @@ def calc_new_ppq_in_grid( start_pos, dx, bx ):
         cur_col = cur_col % grid.cols
         ppq_in_grid = ( cur_col / grid.cols ) * grid.pulses_seen_in_grid
     else:
-        ppq_in_grid = d["x"] + dx
+        ppq_in_grid = start_pos + dx
+        #ppq_in_grid = d["x"] + dx
     ppq_in_grid = ppq_in_grid % grid.pulses_seen_in_grid
     return ppq_in_grid
 
@@ -480,13 +485,13 @@ def move_note_in_time( d, grid, move_note_enc_delta, enc_butts ):
             draw_note_at_cursor( d, grid, bg["grass_color"] )  # erase current note
 
             # re-add to make it go away in note manager and sequencer
-            note_manager.add( grid, note.pos, note.note_num, note.vel, note.dur )
+            note_manager.toggle_in_note_mgr_and_amy_seq( grid, note.pos, note.note_num, note.vel, note.dur )
             
             # modify note position
             temp_note.pos = calc_new_ppq_in_grid( d["x"], move_note_enc_delta, bx )    
 
             # re-add note to note manager
-            note_manager.add( grid, temp_note.pos, temp_note.note_num, temp_note.vel, temp_note.dur )
+            note_manager.toggle_in_note_mgr_and_amy_seq( grid, temp_note.pos, temp_note.note_num, temp_note.vel, temp_note.dur )
 
             # update cursor pos and redraw at new positoin
             d["x"] = temp_note.pos
@@ -584,7 +589,7 @@ def game_loop(d):
         and enc_butts[NEW_NOTE_BUTTON1] == 1:
             button_mgr.note_add_down_set(True)
 
-            result = note_manager.add( grid, 
+            result = note_manager.toggle_in_note_mgr_and_amy_seq( grid, 
                              pos = d["x"], 
                              note_num = 48 + grid.rows - d["y"], 
                              vel = 0.5, 
@@ -601,6 +606,7 @@ def game_loop(d):
         # move cursor around
 
         redraw_cursor_plox = 0
+        redraw_note_name_plox = 0
 
         # move rabbit fwd/back in time in X.  note horizontal is in pulses, e.g. out of 48*4
         dx_pre = enc.read_increment(ENC_MOD_CURS_XPOS)
@@ -615,9 +621,27 @@ def game_loop(d):
         dy = reducer_xy_pos.delta_y(dy_pre)
         if dy != 0:
             #by = 1 - enc_butts[KNOB_YPOS]  # dont invert button press 
+            prev_y = d["y"]
             d["y"] -= dy
             d["y"] = d["y"] % grid.rows
             redraw_cursor_plox=1
+            redraw_note_name_plox=1
+
+        if redraw_note_name_plox:
+            #print(f'note name: {note_name}')
+            
+            # redraw prev position with unselected color
+            idx = grid.rows - 1 - prev_y
+            grid.draw_note_name( prev_y, idx, 0 )
+
+            # redraw new position with selected color
+            idx = grid.rows - 1 - d["y"]
+            grid.draw_note_name( d["y"], idx, 1 )
+
+            # for later
+            # tulip.bg_rect( d["x"], d["y"]+10, 200, 20, bg["grass_color"], 1) 
+            #     ,0, 200, 20, bg["grass_color"], 1)
+            
 
         # move note in time
         move_note_pos_pre = enc.read_increment(ENC_MOVE_NOTE_POS)
