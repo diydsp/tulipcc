@@ -1,7 +1,9 @@
 import random, time, math, os
+
 import tulip, amy, music, midi
 from tulip import ticks_ms, seq_add_callback, seq_remove_callback, seq_ticks
 import m5_8encoder as enc
+
 import gridfun as gfun
 #from operator import attrgetter # not available?
 
@@ -203,6 +205,19 @@ def redraw_cursor( d, grid, color ):
     f_y = math.floor( clip( float(f_y) - grid.VerticalSpacing/2 + 2, 0, HEIGHT-1) ) 
     tulip.sprite_move(0, f_x, f_y)
 
+def redraw_note_name( d, prev_y, grid, color ):
+    # redraw prev position with unselected color
+    idx = grid.rows - 1 - prev_y
+    grid.draw_note_name( prev_y, idx, 0 )   
+
+    # redraw new position with selected color
+    idx = grid.rows - 1 - d["y"]
+    grid.draw_note_name( d["y"], idx, 1 )
+
+    # maybe for later
+    # tulip.bg_rect( d["x"], d["y"]+10, 200, 20, bg["grass_color"], 1) 
+    #     ,0, 200, 20, bg["grass_color"], 1)
+
 
 half_rabbit_w = math.floor(rabbit_w / 2)
 half_rabbit_h = math.floor(rabbit_h / 2)
@@ -339,6 +354,10 @@ def process_key( key ):
     elif key== 25:seq_tempo_delta(1)
     elif key == 22:seq_tempo_delta(-1)
 
+    elif key == 43:   # tab -> tap tempo?
+        pass
+
+
     # see if 
     elif tulip_keys[0] == 1 and tulip_keys[1] == 30:   # ctrl-1
         print
@@ -413,7 +432,7 @@ def yaxis_note_select( d, delta ):
         return closest_note
 
     # 2. seek closest note from curs x position, but not including any currently at the cursor's row.
-    print("y_note_sel stage 2")
+    #print("y_note_sel stage 2")
     for note in note_manager.notes:
         #if note.pos == d["x"] and note.note_num != 48 + grid.rows - d["y"]:
         current_note_number = 48 + grid.rows - d["y"]
@@ -431,7 +450,7 @@ def yaxis_note_select( d, delta ):
         return closest_note
 
     # 3. find distance between this note and all notes
-    print("y_note_sel stage 3")
+    #print("y_note_sel stage 3")
     for note in note_manager.notes:
         if delta > 0:
             y_comp = note.note_num - (48 + grid.rows - d["y"])
@@ -496,10 +515,10 @@ def move_note_in_time( d, grid, move_note_enc_delta, enc_butts ):
             # update cursor pos and redraw at new positoin
             d["x"] = temp_note.pos
             draw_note_at_cursor( d, grid, 1 )  
-            return True #    redraw_cursor_plox = 1
+            return True, True #    redraw_cursor_plox = 1
             #break           
 
-    return False # redraw_cursor_plox = 0
+    return False, False # redraw_cursor_plox = 0
 
 def move_note_in_pitch( d, grid, move_note_enc_delta, enc_butts ):
     #print(f'move_note_delta: {move_note_enc_delta}')
@@ -520,15 +539,14 @@ def move_note_in_pitch( d, grid, move_note_enc_delta, enc_butts ):
 
 
 
-
             # re-add to make it go away in note manager and sequencer
             #note_manager.add( grid, note.pos, note.note_num, note.vel, note.dur )
             # re-add note to note manager
             #note_manager.add( grid, temp_note.pos, temp_note.note_num, temp_note.vel, temp_note.dur )   
 
-            return True # redraw_cursor_plox = 1
+            return True, True # redraw_cursor_plox = 1, redraw_note_name_plox = 1
 
-    return False
+    return False, False
 
 def select_note_in_time( d, grid, note_sel_dx ):    
     nearest_note = xaxis_note_select( d, note_sel_dx )   
@@ -536,10 +554,10 @@ def select_note_in_time( d, grid, note_sel_dx ):
     if nearest_note != None:
         d["x"] = nearest_note.pos   
         d["y"] = 48 + grid.rows - nearest_note.note_num
-        return True #
+        return True, True #
     else:
         #print("no nearest note found")
-        return False
+        return False, False
 
 
 def rotate_note_in_time( grid, note, note_move_dx ):       
@@ -567,13 +585,13 @@ def rotate_notes_in_time( d, grid, note_move_dx ):
 
 
 # map encoders to functions
-ENC_MOD_CURS_XPOS = 7
-ENC_NOTE_SEL_LR   = 6
+ENC_MOVE_CURS_XPOS = 7
+ENC_NOTE_SEEK_LR   = 6
 ENC_MOVE_NOTE_POS = 5
 ENC_TIME_JOG      = 4
 ENC_MOVE_NOTE_NUM = 2
-ENC_NOTE_SEL_UD   = 1
-ENC_MOD_CURS_YPOS = 0
+ENC_NOTE_SEEK_UD   = 1
+ENC_MOVE_CURS_YPOS = 0
 NEW_NOTE_BUTTON1  = 0
 
 # This is called every frame by the GPU.
@@ -605,55 +623,40 @@ def game_loop(d):
     else:
         # move cursor around
 
+        prev_y = d["y"]
         redraw_cursor_plox = 0
         redraw_note_name_plox = 0
 
-        # move rabbit fwd/back in time in X.  note horizontal is in pulses, e.g. out of 48*4
-        dx_pre = enc.read_increment(ENC_MOD_CURS_XPOS)
+        # move cursor fwd/back in time in X.  note horizontal is in pulses, e.g. out of 48*4
+        dx_pre = enc.read_increment(ENC_MOVE_CURS_XPOS)
         dx = reducer_xy_pos.delta_x(dx_pre)
         if dx != 0:
-            bx = 1 - enc_butts[ENC_MOD_CURS_XPOS]  # default bx==1, no button, move one column
+            bx = 1 - enc_butts[ENC_MOVE_CURS_XPOS]  # default bx==1, no button, move one column
             move_cursor_x( d, dx, bx )
             redraw_cursor_plox = 1
 
-        # move rabbit up/down in notespace / Y-axis
-        dy_pre = enc.read_increment(ENC_MOD_CURS_YPOS)
+        # move cursor up/down in notespace / Y-axis
+        dy_pre = enc.read_increment(ENC_MOVE_CURS_YPOS)
         dy = reducer_xy_pos.delta_y(dy_pre)
         if dy != 0:
             #by = 1 - enc_butts[KNOB_YPOS]  # dont invert button press 
-            prev_y = d["y"]
             d["y"] -= dy
             d["y"] = d["y"] % grid.rows
             redraw_cursor_plox=1
             redraw_note_name_plox=1
-
-        if redraw_note_name_plox:
-            #print(f'note name: {note_name}')
-            
-            # redraw prev position with unselected color
-            idx = grid.rows - 1 - prev_y
-            grid.draw_note_name( prev_y, idx, 0 )
-
-            # redraw new position with selected color
-            idx = grid.rows - 1 - d["y"]
-            grid.draw_note_name( d["y"], idx, 1 )
-
-            # for later
-            # tulip.bg_rect( d["x"], d["y"]+10, 200, 20, bg["grass_color"], 1) 
-            #     ,0, 200, 20, bg["grass_color"], 1)
             
 
         # move note in time
         move_note_pos_pre = enc.read_increment(ENC_MOVE_NOTE_POS)
         move_note_enc_delta = reducer_xy_mod.delta_x(move_note_pos_pre)
         if move_note_enc_delta != 0:
-            redraw_cursor_plox = move_note_in_time( d, grid, move_note_enc_delta, enc_butts)
+            redraw_cursor_plox, redraw_note_name_plox = move_note_in_time( d, grid, move_note_enc_delta, enc_butts)
                         
         # move note in pitch
         move_note_num_pre = enc.read_increment(ENC_MOVE_NOTE_NUM)
         move_note_enc_delta = reducer_xy_mod.delta_y(move_note_num_pre)
         if move_note_enc_delta != 0:
-            redraw_cursor_plox = move_note_in_pitch( d, grid, move_note_enc_delta, enc_butts)
+            redraw_cursor_plox, redraw_note_name_plox = move_note_in_pitch( d, grid, move_note_enc_delta, enc_butts)
 
         # time jog
         jog_amount = enc.read_increment(ENC_TIME_JOG)
@@ -665,26 +668,27 @@ def game_loop(d):
 
 
         # select note left/right -or- rotate notes in time
-        note_sel_pre = enc.read_increment(ENC_NOTE_SEL_LR)
+        note_sel_pre = enc.read_increment(ENC_NOTE_SEEK_LR)
         note_sel_dx = reducer_xy_sel.delta_x(note_sel_pre)
         if note_sel_dx != 0:
-            if enc_butts[ENC_NOTE_SEL_LR] == 1:
+            if enc_butts[ENC_NOTE_SEEK_LR] == 1:
                 rotate_notes_in_time( d, grid, note_sel_dx )
             else:
-                redraw_cursor_plox = select_note_in_time( d, grid, note_sel_dx )
+                redraw_cursor_plox, redraw_note_name_plox = select_note_in_time( d, grid, note_sel_dx )
 
 
         # select note up/down
-        note_sel_pre = enc.read_increment(ENC_NOTE_SEL_UD)
+        note_sel_pre = enc.read_increment(ENC_NOTE_SEEK_UD)
         note_sel_dy = reducer_xy_sel.delta_y(note_sel_pre)
         if note_sel_dy != 0:
             #print(f'v_note_sel_delta: {note_sel_dy}')
             nearest_note = yaxis_note_select( d, note_sel_dy )   
-            print(f'nearest_note: {nearest_note}, pos={nearest_note.pos}, note_num={nearest_note.note_num}, vel={nearest_note.vel}')    
+            #print(f'nearest_note: {nearest_note}, pos={nearest_note.pos}, note_num={nearest_note.note_num}, vel={nearest_note.vel}')    
             if nearest_note != None:
                 d["x"] = nearest_note.pos   
                 d["y"] = 48 + grid.rows - nearest_note.note_num
                 redraw_cursor_plox = 1
+                redraw_note_name_plox = 1
             else:
                 print("no nearest note found")
         
@@ -692,10 +696,16 @@ def game_loop(d):
         if redraw_cursor_plox:
             redraw_cursor( d, grid, 1 )
 
-            # f_x, f_y = grid.get_coords(d["x"], d["y"])
-            # f_x = math.floor( clip( float(f_x) + grid.HorizontalSpacing/2 -1, 0, WIDTH-1) )
-            # f_y = math.floor( clip( float(f_y) - grid.VerticalSpacing/2 + 2, 0, HEIGHT-1) ) 
-            # tulip.sprite_move(0, f_x, f_y)
+        if redraw_note_name_plox:
+            #print(f'note name: {note_name}')
+            redraw_note_name( d, prev_y, grid, 1 )
+
+
+            # idx = grid.rows - 1 - prev_y
+            # grid.draw_note_name( prev_y, idx, 0 )
+
+            # idx = grid.rows - 1 - d["y"]
+            # grid.draw_note_name( d["y"], idx, 1 )
 
 
     # New note button released
