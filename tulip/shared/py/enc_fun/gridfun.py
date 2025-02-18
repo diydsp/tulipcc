@@ -5,20 +5,26 @@ import tulip
 Grid Fun by DIYDSP
 simple grid class that draws a basic parameterizable grid
 like a piano roll or drum grid
+
+Presently, its the *visible* grid that is parameterizable
+Eventually this will be a view or "facade" into a larger grid which is
+more like the NoteManager
+
 """
                
 class Grid():
     def __init__(self, start_x, start_y, width, height, palette_index,
                  cols=32, rows=25, visible_quarter_notes=4,seq_ppq=48):
-        self.width = width
-        self.height = height
-        self.cols = cols
-        self.rows = rows
         self.start_x = start_x
         self.start_y = start_y
+        self.width = width
+        self.height = height
         self.palette_index = palette_index
+        self.cols = cols
+        self.rows = rows
         self.visible_quarter_notes = visible_quarter_notes
-        self.pulses_seen_in_grid = seq_ppq * self.visible_quarter_notes
+        self.ppq = seq_ppq
+        self.pulses_seen_in_grid = self.ppq * self.visible_quarter_notes
         self.note_start = 48
         self.note_num_color_no_highlight = palette_index + 45
         self.note_num_color_highlighted = palette_index + 93
@@ -31,7 +37,7 @@ class Grid():
                       "E-","F-","F#","G-",
                       "G#","A-","Bb","B-")      
 
-
+    # row numbering is weird, so read up:
     # left-side, vertical column of note names like "C-4"
     # remember: text gets printed "upwards" from the starting point
     # note: idx counts up 0-24, row counts down 25-1

@@ -3,6 +3,7 @@ import random, time, math, os
 import tulip, amy, music, midi
 from tulip import ticks_ms, seq_add_callback, seq_remove_callback, seq_ticks
 import m5_8encoder as enc
+import sequencer as tulpy_seq
 
 import gridfun as gfun
 #from operator import attrgetter # not available?
@@ -77,7 +78,7 @@ seq_edit = {   "x":0.0, "y":0,
         "transport":"playing",
         "tempo":108,
         "grass_color": bg["grass_color"],
-        "patch":0,
+        "patch":114,
         }
 
 # Draw a line of pixels up top with random colors
@@ -237,7 +238,9 @@ tulip.sprite_on(1)
 note_manager = NoteManager()
 button_mgr = ButtonManager()    
 grid = gfun.Grid(start_x=200, start_y=50, width=700, height=500, palette_index=3,
-                 cols=32,  rows=25, visible_quarter_notes=4,seq_ppq=amy.SEQUENCER_PPQ) 
+                 cols=32,  rows=25, visible_quarter_notes=4,seq_ppq = amy.AMY_SEQUENCER_PPQ,
+#                 seq_ppq=amy.SEQUENCER_PPQ) 
+)
 grid.draw()
 
 redraw_cursor( seq_edit, grid, color = 1 )
@@ -726,13 +729,17 @@ start_time = tulip.ticks_ms()  # do this right before takeoff...
 tulip.frame_callback(game_loop, seq_edit)   # Register the frame callback and data
 amy.send(voices='0,1,2,3', load_patch=1)
 #amy.send(voices=0, note=48, vel=.5)
-#amy.send(voices=1, note=55, vel=.5, sequence= "%d,%d,%d" % (0, amy.SEQUENCER_PPQ*4, 999) )
+#amy.send(voices=1, note=55, vel=.5, sequence= "%d,%d,%d" % (0, 48 * 4, 999) )
 #amy.send(wave=amy.PCM, patch=35,feedback=.5) 
 #amy.send(osc=0, note=50, vel= 1)
-midi.config.add_synth(channel=5, num_voices=1)
+midi.config.add_synth(channel=5, num_voices=1, patch_number=114)
 
+music_seq = tulpy_seq.Sequence( 4 ) # every quarter note
+music_seq.add(0, beat_callback )  #  update the running rabbit every quarter note
 current_beat = int((seq_ticks() / 48) % 4)
-tulip.seq_add_callback(beat_callback, int(amy.SEQUENCER_PPQ))
+#tulip.seq_add_callback(beat_callback, grid.ppq)
+#tulip.seq_add_callback(beat_callback, int(amy.SEQUENCER_PPQ))
+
 tulip.keyboard_callback( process_key )
 tulip.key_scan(1)
 
