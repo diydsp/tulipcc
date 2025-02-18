@@ -118,12 +118,7 @@
       Get a Tulip
     </a>
   </li>
-  <li class="nav-item">
-    <a class="nav-link" href="#involved">
-      Get involved
-    </a>
-  </li>
-
+  
 <li class="nav-item">
     <a class="nav-link" href="https://github.com/shorepine/tulipcc">
       <img src="img/github-mark.svg" width=24 height=24/> Github
@@ -136,6 +131,11 @@
     </a>
   </li>
 
+<li class="nav-item">
+    <a class="nav-link" href="https://tulip.computer/run/">
+      <img src="img/favicon.png" width=24 height=24/> Try Tulip on the Web
+    </a>
+  </li>
 
     </ul>
 
@@ -155,7 +155,9 @@
         <div class="col-lg-7 py-vh-6 position-relative" data-aos="fade-right">
           <h1 class="display-1 fw-bold mt-5"><span style="background-color: white">The <br/>Tulip<br/>Creative<br/> Computer</span></h1>
           <p class="lead"><span style="background-color: white">An affordable, portable and focused device for music, writing and coding.</span></p>
-          <a href="#get" class="btn btn-success btn-xl shadow me-3 rounded-0 my-5">Get a Tulip for only US$59</a>
+          <a href="#get" class="btn btn-success btn-xl shadow me-3 rounded-0 mt-5">Get a Tulip for only US$59</a><br/>
+          <a href="https://tulip.computer/run/" class="btn btn-warning btn-xl shadow me-3 rounded-0 mt-2">Try Tulip on the Web</a>
+
         </div>
     </div>
 </div>
@@ -260,17 +262,16 @@
       <pre><code class="language-python"> 
 # Play a random note of an F minor 7 chord. 
 # Beat syncs with other running music programs
-import tulip, midi, music, random
+import synth, music, random, sequencer
 
 chord = music.Chord("F:min7").midinotes()
-synth = midi.Synth(1) # single note polyphony
+synth = synth.PatchSynth(1) # single note polyphony
 synth.program_change(143) # DX7 BASS 2 patch
 
-def note(t):
-    synth.note_on(random.choice(chord), 0.6, time=t)
-
-# Call note() every 24 ticks (twice a quarter note)
-slot = tulip.seq_add_callback(note, 24)
+# Play random note every quarter note
+seq = sequencer.Sequence(4, 8) 
+for i in range(8):
+    seq.add(i, syn.note_on, [random.choice(chord), 0.6])
       </code></pre>
     </div>
   </div>

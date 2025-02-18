@@ -29,30 +29,6 @@ from ui import *
 from editor import edit
 
 
-# A class for making a game. Clears and sets up the screen for a game
-class Game():
-    def __init__(self, debug=False):
-        self.debug = debug
-        if(not debug):
-            tfb_stop()
-        key_scan(1) # enter direct scan mode, keys will not hit the REPL this way
-        Sprite.reset()  # resets sprite counter and RAM
-        collisions() # resets collision
-        amy.reset()
-        self.run = 1
-
-    def quit(self):
-        self.run = 0
-        # Done. Clean up a bit
-        frame_callback()
-        collisions() # resets collision
-        if(not self.debug):
-            Sprite.reset()  # resets sprite counter
-            gpu_reset()
-            tfb_restore()
-            tfb_start()
-        key_scan(0)
-
 # Class to handle sprites, takes care of memory
 class Sprite():
     mem_pointer = 0
@@ -214,6 +190,8 @@ class Joy:
 
 # prompt for y/n and return true if Y
 def prompt(prompt):
+    if(board()=="WEB"):
+        return webnyi()
     print(prompt + " [Yy/Nn]: ", end='')
     r = input()
     if(r=='Y' or r=='y'): 
@@ -248,10 +226,12 @@ def seq_bpm(bpm=None):
 
 def seq_ppq(ppq=None):
     if(ppq is not None):
-        print("You can no longer set PPQ in Tulip. It's fixed at %d" % (amy.SEQUENCER_PPQ))
-    return amy.SEQUENCER_PPQ    
+        print("You can no longer set PPQ in Tulip. It's fixed at %d" % (amy.AMY_SEQUENCER_PPQ))
+    return amy.AMY_SEQUENCER_PPQ    
 
 def remap():
+    if(board()=="WEB"):
+        return webnyi()
     print("Type key or key combo you wish to remap: ",end='')
     (_, scan, mod) = key_wait()
     print()
@@ -322,12 +302,13 @@ def get_latest_release():
     return (None, None, None, None)
 
 def upgrade():
-    import time, sys, os, urequests
+    import time, sys, os
+    import tuliprequests as urequests
     try:
         import esp32, machine
         from esp32 import Partition
     except ImportError:
-        print("Upgrading only works on Tulip CC for now. Visit tulip.computer to download the latest Tulip Desktop.")
+        print("Upgrading only works on Tulip CC for now. Visit tulip.computer to download the latest Tulip Desktop or Tulip Web.")
         return
 
     if ip() is None:
@@ -495,6 +476,17 @@ def exists(fn):
     return True
 
 
+def download_and_run(name):
+    if board()=="WEB":
+        import world_web as world
+    else:
+        import world
+    def rt():
+        run(name)
+    world.download(name,done_cb=rt)
+    print("Downloading '%s'... please wait..." % (name))
+
+
 # reloads, runs and cleans up a Tulip "app"
 # Some ways to run things
 # (1) run('module') # imports module.py in your cwd
@@ -504,6 +496,9 @@ def exists(fn):
 # (5) run('drums') # imports drums.py and run(screen)s it
 # (6) run('bunny_bounce') # finds this in /sys/app/bunny_bounce
 # (7) run("calibrate") # finds this in /sys/ex/calibrate.py
+
+# how about
+# (8) run(className) -- runs a class name in a single file
 
 def run(module_string):
     import sys
@@ -547,7 +542,6 @@ def run(module_string):
         if(hasattr(actual_module, 'run')):
             # Make the app screen
             screen = tulip.UIScreen(module_string, bg_color=0)
-            screen.app_dir = pwd()
             # Run the app
             try:
                 actual_module.run(screen)
@@ -575,17 +569,34 @@ def run(module_string):
         if(screen): screen.screen_quit_callback(None)
 
 def url_save(url, filename, mode="wb", headers={"User-Agent":"TulipCC/4.0"}):
-    import urequests
-    d = urequests.get(url, headers = headers).save(filename,mode)
-    return d
+    if(board()=="WEB"):
+        import world_web, js
+        def next(x):
+            r = open(filename, mode)
+            r.write(x)
+            r.close()
+            return "OK"
+        return world_web.grab_bytes_direct(url, headers=headers).then(lambda x: next(x))
+    else:
+        import tuliprequests as urequests
+        d = urequests.get(url, headers = headers).save(filename,mode)
+        return d
 
 def url_get(url, headers={"User-Agent":"TulipCC/4.0"}):
-    import urequests
-    c = urequests.get(url, headers = headers)
-    return c
+    if(board()=="WEB"):
+        import world_web
+        return world_web.grab_bytes_direct(url, headers=headers)
+    else:
+        import tuliprequests as urequests
+        c = urequests.get(url, headers = headers)
+        return c
+
 
 def url_put(url, filename, headers={"User-Agent":"TulipCC/4.0"}):
-    import urequests, os
+    if(board()=="WEB"):
+        return webnyi()
+    import os
+    import tuliprequests as urequests
     filesize = os.stat(filename)[6]
     f = open(filename, 'rb')
     put_response = urequests.put(
@@ -599,14 +610,17 @@ def url_put(url, filename, headers={"User-Agent":"TulipCC/4.0"}):
     )
     f.close()
 
-def screenshot(filename=None):
-    import world
+def screenshot(filename=None, x=-1, y=-1, w=-1, h=-1):
+    if(board()=="WEB"):
+        import world_web as world
+    else:
+        import world
     from upysh import rm
     if(filename is not None):
-        int_screenshot(filename)
+        int_screenshot(filename,x,y,w,h)
         return None
     if(ip() is not None):
-        int_screenshot("screenshot.png")
+        int_screenshot("screenshot.png",x,y,w,h)
         world.upload("screenshot.png", 'Tulip Screenshot')
     else:
         print("Need wi-fi on")

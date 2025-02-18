@@ -1,18 +1,50 @@
-# world-async.py
-# async version of tulip world
-# at first for just the web ports
-
+import modal
 import json
-import js
-import asyncio
 import os
-from world import MAX_DESCRIPTION_SIZE, MAX_USERNAME_SIZE, username, _isdir, nice_time, read_in_chunks, 
-    ta, tb, text_channel_id, files_channel_id, text_base_url, files_base_url, headers, discord_epoch,
-    unique_files, ls, prompt_username
+import requests
+from fastapi import FastAPI, Response, Form, Body
+from fastapi import File, UploadFile, HTTPException
+from typing import List
 
+MAX_DESCRIPTION_SIZE=50
+MAX_USERNAME_SIZE=10
+username = None
+
+# This is the token for the Tulip World app. 
+# it only has perms to be able to read and post to the private Tulip World channels on the SPSS discord
+# if there's any abuse of this, i can revoke the token
+ta = 'MTIzOTIyNTc4NDU3NzgxODc0NQ.GjGMum'
+tb = 'KvPGzKZDr1phrId9iY7LMtIDgMNtI0om8MsWsA'
+text_channel_id = "1239226672046407824" # tulip-world channel
+files_channel_id = "1239512482025050204" # tulip-world-files channel
+
+# Discord HTTP API stuff
+text_base_url = "https://discordapp.com/api/channels/{}/".format(text_channel_id)
+files_base_url = "https://discordapp.com/api/channels/{}/".format(files_channel_id)
+headers = { "Authorization":"Bot {}".format(ta+'.'+tb),
+            "User-Agent":"TulipCC/4.0 (https://tulip.computer, v0.1)",
+            "Content-Type":"application/json", }
+
+discord_epoch = 1420070400000
+
+image = modal.Image.debian_slim().pip_install("fastapi[standard]", "requests", "python-multipart")
+app = modal.App("tulipworldapi", image=image)
+
+@app.function()
+@modal.web_endpoint()
+def postmessage(content: str):
+    r = requests.post(text_base_url+"messages", headers = headers, data =  json.dumps ( {"content":content} ))
+
+@app.function()
+@modal.web_endpoint()
+def urlget(url: str):
+    r = requests.get(url)
+    return Response(content=bytes(r.content), media_type="application/binary")
 
 # get the last n messages
-def messages(n=500, chunk_size = 100, mtype='text'):
+@app.function()
+@modal.web_endpoint()
+def messages(n: int=500, chunk_size: int = 100, mtype: str='text'):
     ret = []
     before = None
 
@@ -64,50 +96,13 @@ def messages(n=500, chunk_size = 100, mtype='text'):
             ret.append(r)
     return ret
 
-def download(filename, username=None, limit=5000, chunk_size=4096):
-    got = None
-    # Check for an extension
-    if('.' not in filename[-5:]):
-        filename = filename + ".tar"
-    for file in messages(n=limit, mtype='files'):
-        if(file["filename"] == filename):
-            if username is None or username==file['username']:
-                got = file
-                break
-    if got is not None:
-        age_nice = nice_time(got["age_ms"])
-        grab_url = got["url"] # Will get the latest (most recent) file with that name
-
-        r = tulip.url_save(got['url'], filename)
-
-        print("Downloaded %s by %s [%d bytes, last updated %s] from Tulip World." % (filename,got['username'], got['size'], age_nice.lstrip()))
-        if(filename.endswith('.tar')):
-            print("Unpacking %s. Run it with run('%s')" % (filename, filename[:-4]))
-            tulip.tar_extract(filename, show_progress=False)
-            os.remove(filename)
-    else:
-        if(username is None):
-            print("Could not find %s on Tulip World" % (filename))
-        else:
-            print("Could not find %s by %s on Tulip World" % (filename, username))
-
-
-
-# uploads a file
-def upload(filename, description=""):
-    u = prompt_username()
-    if u is None:
-        return
-
-    tar = False
-    if(_isdir(filename)):
-        tar = True
-        print("Packing %s" % (filename))
-        tulip.tar_create(filename)
-        filename += ".tar"
-
-    filesize = os.stat(filename)[6]
-    f = open(filename, 'rb')
+@app.function()
+@modal.web_endpoint(method='POST')
+def upload(username: str = Form(...), description: str = Form(...), file: UploadFile = File(...)):
+    contents = file.file.read()
+    filename = file.filename
+    filesize = len(contents)
+    if(filesize==0): return {"error":"couldn't read file %s" % (filename)}
 
     # First get the url to upload to
     api_response = requests.post(
@@ -127,12 +122,12 @@ def upload(filename, description=""):
             "Content-Length": str(filesize),
             "Content-Type": "application/octet-stream",
         },
-        data=f,
+        data=contents,
     )
 
     # Lastly, post a message with the uploaded filename
     payload = {
-        "content":u + " ### " + description[:MAX_DESCRIPTION_SIZE],
+        "content":username + " ### " + description[:MAX_DESCRIPTION_SIZE],
         "attachments": [{
             "id": attachment_info['id'],
             "uploaded_filename":attachment_info['upload_filename'],
@@ -141,19 +136,7 @@ def upload(filename, description=""):
     }
     r = requests.post(files_base_url+"messages", headers = headers, data = json.dumps(payload))
 
-    print("Uploaded %s to Tulip World." % (filename))
-    if(tar):
-        os.remove(filename)
-
-
-def post_message(message):
-    u = prompt_username()
-    if u is None:
-        return
-    r = requests.post(text_base_url+"messages", headers = headers, data =  json.dumps ( {"content":u + " ### " + message} ))
-
-
-
+    return {"ok":True} # not needed
 
 
 

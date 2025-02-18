@@ -333,6 +333,12 @@ STATIC mp_obj_t tulip_tfb_str(size_t n_args, const mp_obj_t *args) {
     if(n_args > 2) set = 1;
     if(set) {
         const char * str = mp_obj_str_get_str(args[2]);
+        if(x>0) {
+            // Clear the front so the redraw works
+            for(uint16_t i=0;i<x;i++) {
+                if(TFB[y*TFB_COLS+i]==0) TFB[y*TFB_COLS+i] = 32;
+            }
+        }
         for(uint16_t i=0;i<strlen(str);i++) {
             TFB[y*TFB_COLS+x+i] = str[i];
         }
@@ -357,6 +363,7 @@ STATIC mp_obj_t tulip_tfb_str(size_t n_args, const mp_obj_t *args) {
                 }
             }
         }
+        display_tfb_update(y);
         return mp_const_none; 
     } else {
         mp_obj_t tuple[5];
@@ -425,12 +432,17 @@ STATIC mp_obj_t mp_lv_task_handler(mp_obj_t arg)
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_1(mp_lv_task_handler_obj, mp_lv_task_handler);
 
-void tulip_frame_isr() {
+
+void mp_schedule_lv() {
     // schedule lvgl task
     mp_sched_schedule((mp_obj_t)&mp_lv_task_handler_obj, mp_const_none);
+}
 
+void tulip_frame_isr() {
+    mp_schedule_lv();
     if(frame_callback != NULL) {
         // Schedule the python callback given to run asap
+        //fprintf(stderr, "calling function %p with arg %p at frame %d\n", frame_callback, frame_arg, vsync_count);
         mp_sched_schedule(frame_callback, frame_arg);
 #ifdef ESP_PLATFORM
         //mp_hal_wake_main_task_from_isr();
@@ -485,23 +497,21 @@ STATIC mp_obj_t tulip_seq_add_callback(size_t n_args, const mp_obj_t *args) {
     }
     if(index>=0) {
         sequencer_callbacks[index] = args[0];
-        if(n_args == 2) {
-            sequencer_dividers[index] = mp_obj_get_int(args[1]);
-        } else {
-            sequencer_dividers[index] = AMY_SEQUENCER_PPQ;            
-        }
+        sequencer_tick[index] = mp_obj_get_int(args[1]);
+        sequencer_period[index] = mp_obj_get_int(args[2]);
     } else {
         index = -1;
     }
     return mp_obj_new_int(index);
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(tulip_seq_add_callback_obj, 1, 2, tulip_seq_add_callback);
+STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(tulip_seq_add_callback_obj, 3, 3, tulip_seq_add_callback);
 
 STATIC mp_obj_t tulip_seq_remove_callback(size_t n_args, const mp_obj_t *args) {
     int8_t index = mp_obj_get_int(args[0]);
     if(index>=0 && index <SEQUENCER_SLOTS) {
         sequencer_callbacks[index] = NULL;
-        sequencer_dividers[index] = 0;
+        sequencer_period[index] = 0;
+        sequencer_tick[index] = 0;
     }
     return mp_const_none;
 }
@@ -511,7 +521,8 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(tulip_seq_remove_callback_obj, 1, 1, 
 STATIC mp_obj_t tulip_seq_remove_callbacks(size_t n_args, const mp_obj_t *args) {
     for(uint8_t i=0;i<SEQUENCER_SLOTS;i++) {
         sequencer_callbacks[i] = NULL;
-        sequencer_dividers[i] = 0;
+        sequencer_period[i] = 0;
+        sequencer_tick[i] = 0;
     }
     return mp_const_none;
 }
@@ -732,10 +743,10 @@ STATIC mp_obj_t tulip_sprite_move(size_t n_args, const mp_obj_t *args) {
             sprite_x_px[spriteno] = x;
             sprite_y_px[spriteno] = y;
         } else {
-            fprintf(stderr, "bad sprite xy %d %d\n", x,y);
+            //fprintf(stderr, "bad sprite xy %d %d\n", x,y);
         }
     } else {
-        fprintf(stderr, "move bad spriteno %d\n", spriteno);
+        //fprintf(stderr, "move bad spriteno %d\n", spriteno);
     }
     return mp_const_none;
 }
@@ -849,12 +860,20 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(tulip_gpu_reset_obj, 0, 0, tulip_gpu_
 STATIC mp_obj_t tulip_int_screenshot(size_t n_args, const mp_obj_t *args) {
     char fn[50];
     strcpy(fn, mp_obj_str_get_str(args[0]));
-    display_screenshot(fn);
+    if(n_args>1) {
+        int16_t x = mp_obj_get_int(args[1]);
+        int16_t y = mp_obj_get_int(args[2]);
+        int16_t w = mp_obj_get_int(args[3]);
+        int16_t h = mp_obj_get_int(args[4]);
+        display_screenshot(fn, x,y,w,h);
+    } else {
+        display_screenshot(fn, -1, -1, -1, -1);
+    }
     return mp_const_none;
 
 }
 
-STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(tulip_int_screenshot_obj, 1, 1, tulip_int_screenshot);
+STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(tulip_int_screenshot_obj, 1, 5, tulip_int_screenshot);
 
 
 

@@ -3,6 +3,7 @@ freeze("$(PORT_DIR)/modules", "apa106.py")
 freeze("$(PORT_DIR)/modules", "inisetup.py")
 freeze("$(PORT_DIR)/modules", "espnow.py")
 freeze("$(PORT_DIR)/modules", "flashbdev.py")
+require("bundle-networking")
 
 include("$(MPY_DIR)/extmod/asyncio")
 
@@ -23,4 +24,5 @@ freeze("$(PORT_DIR)/../shared/py")
 freeze("$(MPY_DIR)/../amy", "amy.py")
 freeze("$(MPY_DIR)/../amy", "juno.py")
 freeze("$(MPY_DIR)/../amy", "amy_wave.py")
+freeze("$(MPY_DIR)/../amy", "amy_constants.py")
 #freeze("$(MPY_DIR)/lib/micropython-lib/micropython/utarfile", "utarfile.py")

@@ -32,6 +32,13 @@ void check_key();
 void destroy_window();
 void unix_display_init();
 
+#ifdef __EMSCRIPTEN__
+    uint8_t display_size_changed = 0;
+    #define SDL_WINDOW_NAME "Tulip Web"
+#else
+    #define SDL_WINDOW_NAME "Tulip Desktop"
+#endif    
+
 
 // LVGL/SDL connectors for keyboard here
 
@@ -62,6 +69,17 @@ void lvgl_keyboard_read(lv_indev_t * indev_drv, lv_indev_data_t * data)
         data->continue_reading = true;
     }
 }
+
+
+void force_rescale() {
+    int rw, rh;
+    SDL_GetRendererOutputSize(default_renderer, &rw, &rh);
+    //fprintf(stderr, "renderer output size %d %d\n", rw,rh);
+    float widthScale = (float)rw / (float) tulip_rect.w;
+    float heightScale = (float)rh / (float) tulip_rect.h;
+    SDL_RenderSetScale(default_renderer, widthScale, heightScale);
+}
+
 
 
 /**
@@ -162,6 +180,7 @@ int8_t compute_viewport(uint16_t tw, uint16_t th, int8_t resize_tulip) {
     viewport.w = (int)((float)tulip_rect.w * w_ratio);
     viewport.h = (int)((float)tulip_rect.h * h_ratio);
     viewport.x = (sw - viewport.w) / 2;
+    //fprintf(stderr, "viewport is %d,%d,%d,%d\n", viewport.x, viewport.y, viewport.w, viewport.h);
     return 1; // ok
 }
 
@@ -212,7 +231,9 @@ int unix_display_draw() {
     // Are we restarting the display for a mode change, or quitting
     if(unix_display_flag < 0) {
         destroy_window();
+        #ifndef __EMSCRIPTEN__
         display_teardown();
+        #endif
 
         if(unix_display_flag == -2){
             unix_display_flag = 0;
@@ -230,8 +251,23 @@ void show_frame(void*d) {
     unix_display_draw();
 }
 
+#ifdef __EMSCRIPTEN__
+#include "emscripten/html5.h"
+static EM_BOOL on_web_display_size_changed( int event_type, 
+    const EmscriptenUiEvent *event, void *user_data ) {
+    display_size_changed = 1;  // custom global flag
+    return 0;
+}
+#endif
+
 void init_window() {
-    window = SDL_CreateWindow("SDL Output", SDL_WINDOWPOS_UNDEFINED,
+#ifdef __EMSCRIPTEN__
+    // We keep a hidden textinput on the page to capture keypresses for mobile devices & web
+    SDL_SetHint(SDL_HINT_EMSCRIPTEN_KEYBOARD_ELEMENT, "#textinput");
+    // This sets the scale to nearest neighbor -- "0", the default, makes our pixel font very jaggy
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
+#endif
+    window = SDL_CreateWindow(SDL_WINDOW_NAME, SDL_WINDOWPOS_UNDEFINED,
                             SDL_WINDOWPOS_UNDEFINED, tulip_rect.w, tulip_rect.h,
                             SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
     if (window == NULL) {
@@ -239,20 +275,20 @@ void init_window() {
     } else {
         default_renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_TARGETTEXTURE | SDL_RENDERER_PRESENTVSYNC);
         framebuffer= SDL_CreateTexture(default_renderer,SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, tulip_rect.w,tulip_rect.h);
-        int rw, rh;
-        SDL_GetRendererOutputSize(default_renderer, &rw, &rh);
-        float widthScale = (float)rw / (float) tulip_rect.w;
-        float heightScale = (float)rh / (float) tulip_rect.h;
-        SDL_RenderSetScale(default_renderer, widthScale, heightScale);
+        #ifndef __EMSCRIPTEN__
+        force_rescale();
+        #endif
     }
     // If this is not set it prevents sleep on a mac (at least)
     SDL_SetHint(SDL_HINT_VIDEO_ALLOW_SCREENSAVER, "1");
-    SDL_SetWindowTitle(window, "Tulip Desktop");
+    SDL_SetWindowTitle(window, SDL_WINDOW_NAME);
 
 #ifdef __EMSCRIPTEN__ // Tulip web deskop
-    const int simulate_infinite_loop = 0; // call the function repeatedly
-    const int fps = 0; // call the function as fast as the browser wants to render (typically 60fps)
-//    emscripten_set_main_loop(show_frame, NULL, fps, simulate_infinite_loop);
+    emscripten_set_resize_callback(
+        EMSCRIPTEN_EVENT_TARGET_WINDOW,
+        0, 0, on_web_display_size_changed
+    );
+
 #endif
 }
 
@@ -332,7 +368,11 @@ void check_key() {
                     keyboard_top_y = kby;
                     drawable_w = e.window.data1;
                     drawable_h = e.window.data2;
+                    #ifndef __EMSCRIPTEN__
                     unix_display_flag = -2;
+                    #else
+                    force_rescale();
+                    #endif
                 }
             }
         } else if(e.type == SDL_KEYUP) {
@@ -345,7 +385,15 @@ void check_key() {
         } 
         int x,y;
         uint32_t button = SDL_GetMouseState(&x, &y);
+        #ifdef __EMSCRIPTEN__
+        float newx, newy;
+        SDL_RenderWindowToLogical(default_renderer, x,y , &newx, &newy);
+        //if(button) fprintf(stderr, "x,y was %d,%d is now %d,%d vs is %f\n", x,y, (int)newx, (int)newy, viewport_scale);
+        x = (int16_t) newx;
+        y = (int16_t) newy;
+        #endif
         if(button) {
+            //fprintf(stderr, "button is at %d,%d. vp is %d,%d. scale is %f\n", x,y, viewport.x, viewport.y, viewport_scale);
             last_touch_x[0] = (int16_t)x-(int16_t)(viewport.x/viewport_scale);
             last_touch_y[0] = (int16_t)y-(int16_t)(viewport.y/viewport_scale);
             was_touch = 1;

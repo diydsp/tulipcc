@@ -4,13 +4,13 @@ Here you can see the API [Tulip](../README.md) currently ships with.
 
 # Current API
 
-**NOTE**: Our own builds of [Tulip Desktop](tulip_desktop.md) may lag behind some of the APIs listed here. This page represents the APIs in the latest commit of our _main_ branch. If something isn't working properly, try building from scratch.
+**NOTE**: This page represents the APIs in the latest commit of our _main_ branch. Builds for the Tulip hardware (`tulip.upgrade()`) and the macOS build of Tulip Desktop may lag behind these changes. [Tulip Web](https://tulip.computer/run) should always be up to date with our _main_ branch.
 
 ![Tulip](https://raw.githubusercontent.com/shorepine/tulipcc/main/docs/pics/tulip4.png)
 
 ## General
 
-[Tulip](../README.md) boots right into a Python prompt and all interaction with the system happens there. You have your own space to store code and files in `/user` and we keep system examples and programs in `/sys`. (On Tulip Desktop, the `sys` folder is actually `../sys` from where it boots.)
+[Tulip](../README.md) boots right into a Python prompt and all interaction with the system happens there. You have your own space to store code and files in `/user` and we keep system examples and programs in `/sys`. (On Tulip Desktop or Web, the `sys` folder is actually `../sys` from where it boots.)
 
 You can make your own Python programs with Tulip's built in editor and execute them, or just experiment on the Tulip REPL prompt in real time.
 
@@ -34,6 +34,9 @@ tulip.upgrade()
 # If no filename given will upload to Tulip World (needs wifi)
 tulip.screenshot("screenshot.png")
 tulip.screenshot()
+
+# You can optionally pass x,y,w,h to screenshot to only capture part of the screen
+tulip.screenshot("middle.png", x=400,y=200,w=200,h=200)
 
 # Return the current CPU usage (% of time spent on CPU tasks like Python code, sound, some display)
 usage = tulip.cpu() # or use tulip.cpu(1) to show more detail in a connected UART
@@ -77,19 +80,19 @@ rabbit_game/
 
 The main Python script must be the name of the package. This script needs to explicitly `import tulip` or `amy` or others if you are using those. Then, you and your users can start the package by `run('rabbit_game')` from the directory that has the folder in it. The package will be cleaned up after when they exit. 
 
-By default, a package is imported (for example, `import rabbit_game`.) If your `rabbit_game.py` has code that runs on import, it will run. If you are writing a game or other thing that needs full access to Tulip, put an infinite loop in your code. Users can use `Control-C` to quit and they will be back at the REPL with the program's imports removed from memory.
+By default, a package is imported (for example, `import rabbit_game`.) If your `rabbit_game.py` has code that runs on import, it will run. If it has a `def run(app):` method, a `UIScreen` full screen window will be created that the user can switch to or quit. 
 
 We ship a couple of game-like examples, check them out:
  * [`bunny_bounce`](https://github.com/shorepine/tulipcc/blob/main/tulip/fs/ex/bunny_bounce/bunny_bounce.py)
  * [`planet_boing`](https://github.com/shorepine/tulipcc/blob/main/tulip/fs/ex/planet_boing/planet_boing.py)
-
+ * [`parallax`](https://github.com/shorepine/tulipcc/blob/main/tulip/fs/ex/parallax.py)
 
 The Tulip World BBS supports uploading and downloading packages as tar files: just `world.upload('package', username)` or `world.download('package')`. 
 
 We put a few examples in `/sys/ex`, and if you `run('app')`, it will look in your current folder and the `/sys/ex` folder.
 
 
-### Multitasking apps 
+### Apps 
 
 If you want your package to run alongside other apps, and show a task bar with a quit and app-switch button, you need to use a package that implements `UIScreen`. `UIScreen`'s API is [detailed below](#uiscreen), but a simplest example is:
 
@@ -100,9 +103,11 @@ def run(app):
     app.present() # I'm ready, show my app
 ```
 
-Put that in a package called `program`, and when `run('program')` is called, your app will start and show a task bar. Multitasking apps have to return immediately after setup (the `run` function) and rely on callbacks to process data and user input. We have callbacks for almost everything you'd need: keyboard input, MIDI input, music sequencer ticks and touch input. `UIScreen` also sets up callbacks for "activating" (switching to the app or first run), "deactivating" (switching away from the app) or quitting. 
+Put that in a package called `program`, and when `run('program')` is called, your app will start and show a task bar. Multitasking apps have to return immediately after setup (the `run` function) and rely on callbacks to process data and user input. We have callbacks for  everything you'd need: keyboard input, MIDI input, music sequencer ticks and touch input. `UIScreen` also sets up callbacks for "activating" (switching to the app or first run), "deactivating" (switching away from the app) or quitting. 
 
-`UIScreen` apps should use LVGL/`tulip.UIX` classes for their UI, so that the UI appears and disappears automatically during switching. This is especially important on Tulip CC hardware, where we ensure the UI switching drawing does not interrupt music or other time sensitive callbacks. You can also use other Tulip drawing commands for the UI, but be mindful that the BG (and often TFB) will be cleared on switching away from your app, so you'll have to redraw those on your activate callback. 
+If you set your `UIScreen` up as a `game` (by setting `app.game = True` in your `def run(app):` before `app.present()`), it will handle things like clearing the sprites and BG, and making sure keypresses only go to the full screen window. `game` mode `UIScreen`s also do not show a task bar up top. That means users will have to know to use `control-Tab` and `control-Q` to switch and quit from your game.
+
+`UIScreen` apps should use LVGL/`tulip.UIX` classes for their UI, so that the UI appears and disappears automatically during switching. This is especially important on Tulip CC hardware, where we ensure the UI switching drawing does not interrupt music or other time sensitive callbacks. You can also use other Tulip drawing commands for the UI, but be mindful that the BG (and often TFB) will be cleared on switching away from your app, so you'll have to redraw those on your activate callback. If you have a `game` mode on, the `deactivate` callback will clear the BG and sprite layer for you.
 
 The REPL itself is treated as a (special) multitasking app, always first in the list and cannot be quit. 
 
@@ -123,12 +128,18 @@ Please see the [music tutorial](music.md) for a tutorial on `UIScreen`.
 
 Still very much early days, but Tulip supports a native chat and file sharing BBS called **TULIP ~ WORLD** where you can hang out with other Tulip owners. You're able to pull down the latest messages and files and send messages and files yourself. 
 
-Try it out with `run('worldui')`. You'll first want to run `world.prompt_username()` to choose a username.
+Try it out with `run('worldui')`. You'll first want to run `world.username="my_name"` to choose a username.
 
 You can also call the underlying Tulip World APIs:
 
+
 ```python
-import world
+# On Tulip Web, you should use world_web
+if(tulip.board()=="WEB"):
+    import world_web as world
+else:
+    import world
+
 messages = world.messages(n=500, mtype='files') # returns a list of latest files (not unique ones)
 messages = world.messages(n=100, mtype='text') # returns a list of latest chat messages
 
@@ -167,7 +178,7 @@ edit() # no filename
 
 We include [LVGL 9](https://lvgl.io) for use in making your own user interface. LVGL is optimized for constrained hardware like Tulip. You can build nice UIs with simple Python commands. You can use LVGL directly by simply `import lvgl` and setting up your own widgets. Please check out [LVGL's examples page](https://docs.lvgl.io/8.3/examples.html) for inspiration. (As of this writing, their Python examples have not been ported to our version of LVGL (9.0.0) but most things should still work.) 
 
-It's best to build user interfaces inside a `UIScreen` multitasking Tulip package. Our `UIScreen` will handle placing elements on your app and dealing with multitasking. On Tulip CC, drawing lots of UI elements to the screen will steal all of the GDMA buffer, which may impact audio. So we slow down loading of elements in the `UIScreen` class. 
+It's best to build user interfaces inside a `UIScreen` multitasking Tulip package. Our `UIScreen` will handle placing elements on your app and dealing with multitasking. 
 
 For more simple uses of LVGL, like buttons, sliders, checkboxes and single line text entry, we provide wrapper classes like `UICheckbox`, `UIButton`, `UISlider`, `UIText`, and `UILabel`. See our fully Python implementation of these in [`ui.py`](https://github.com/shorepine/tulipcc/blob/main/tulip/shared/py/ui.py) for hints on building your own UIs. Also see our [`buttons.py`](https://github.com/shorepine/tulipcc/blob/main/tulip/fs/ex/buttons.py) example, or more complete examples like [`drums`](https://github.com/shorepine/tulipcc/blob/main/tulip/shared/py/drums.py), [`juno6`](https://github.com/shorepine/tulipcc/blob/main/tulip/shared/py/juno6.py), [`wordpad`](https://github.com/shorepine/tulipcc/blob/main/tulip/fs/ex/wordpad.py) etc in `/sys/ex`.
 
@@ -285,7 +296,7 @@ def run(screen):
 
 ## Input
 
-Tulip supports USB keyboard input, USB mouse input, and touch input. It also supports a software on-screen keyboard, and any I2C connected keyboard or joystick on Tulip CC. On Tulip Desktop, mouse clicks act as touch points, and your computers' keyboard works. 
+Tulip supports USB keyboard input, USB mouse input, and touch input. It also supports a software on-screen keyboard, and any I2C connected keyboard or joystick on Tulip CC. On Tulip Desktop and Tulip Web, mouse clicks act as touch points, and your computers' keyboard works. 
 
 If you have a USB mouse connected to Tulip (presumably through a hub) it will, by default, show a mouse pointer and treat clicks as touch downs. 
 
@@ -357,14 +368,13 @@ Tulip hardware has a I2C port on the side for connecting a variety of input or o
 Tulip CC has the capability to connect to a Wi-Fi network, and Python's native requests library will work to access TCP and UDP. We ship a few convenience functions to grab data from URLs as well. 
 
 ```python
-# Join a wifi network (not needed on Tulip Desktop)
+# Join a wifi network (not needed on Tulip Desktop or Web)
 tulip.wifi("ssid", "password")
 
 # Get IP address or check if connected
 ip_address = tulip.ip() # returns None if not connected
 
 # Save the contents of a URL to disk (needs wifi)
-# Note: the screen will blank during this operation 
 bytes_read = tulip.url_save("https://url", "filename.ext")
 
 # Get the contents of a URL to memory (needs wifi, and be careful of RAM use)
@@ -407,6 +417,48 @@ Tulip can also route AMY signals to CV outputs connected over Tulip CC's I2C por
 **See the [music tutorial](music.md) for a LOT more information on music in Tulip.**
 
 ![With Alles](https://raw.githubusercontent.com/shorepine/tulipcc/main/docs/pics/nicoboard-alles.jpg)
+
+
+### synth
+
+We provide a wrapper on AMY that manages synthesizers you can allocate. These handle voice stealing and finding oscillators for the underlying synth patches. They're recommended to use for most use cases. If you need more direct control, you can use AMY.
+
+You can use `synth.PatchSynth` to create a synthesizer based on our built-in patches. 0-127 are Juno-6 patches, 128-255 are DX-7 patches, 256 is a piano. You can create your own patches as well.
+
+```python
+syn = synth.PatchSynth(num_voices=2, patch_number=143) # two note polyphony, patch 143 is DX7 BASS 2
+```
+
+If you want to play multimbral tones, like a Juno-6 bass alongside a DX7 pad:
+
+```python
+synth1 = synth.PatchSynth(num_voices=1, patch_number=0)  # Juno
+synth2 = synth.PatchSynth(num_voices=1, patch_number=128)  # DX7
+synth1.note_on(50, 1)
+synth2.note_on(50, 0.5)
+synth1.note_off(50)
+```
+
+The `OscSynth` synth lets yo directly control parameters of an AMY oscillator as a managed synth:
+
+```python
+syn = synth.OscSynth(wave=amy.PCM, patch=10) # PCM wave type, patch=10 (808 Cowbell)
+```
+
+You can use `OscSynth` and `amy.load_sample` to load samples from WAV files on Tulip storage:
+
+```python
+amy.load_sample('sample.wav', patch=50)
+s = synth.OscSynth(wave=amy.PCM, patch=50)
+s.note_on(60, 1.0)
+```
+
+Use `syn.release()` to free up the resources for a synth.
+
+
+### Low level AMY control
+
+You can use `amy.py` to control the AMY synthesizer directly.
 
 ```python
 
@@ -480,21 +532,57 @@ for i,note in enumerate(chord.midinotes()):
 
 ## Music sequencer
 
-Tulip is always running AMY's live sequencer, meant for music programs you write to share a common clock. This allows you to have multiple music programs running that respond to a callback to play notes. 
+Tulip is always running AMY's live sequencer, which allows you to have multiple music programs running sharing a common clock.
 
-**There are two types of sequencer callbacks in Tulip**. One is the AMY sequencer, where you set up an AMY synthesizer event to run at a certain time (or periodically.) This is done using the `amy.send(sequence=)` command. See [AMY's documentation](https://github.com/shorepine/amy/blob/main/README.md#the-sequencer) for more details. 
+A sequence in Tulip is defined as a `divider` and a `length`. The `divider` is set as the musical note length's denominator. If you want this sequence to be a pattern of events, you can specify that in `length`, which indicates how many of those events happen in a loop. 
 
-Tulip also receives these same sequencer messages, for use in updating the screen or doing other periodic events. Due the way Tulip works, depending on the activity, there can sometimes be a noticeable delay between the sequencer firing and Tulip finishing drawing (some 10s-100 milliseconds.) The audio synthesizer will run far more accurately using the AMY native sequencer. So make sure you use AMY's event sequencing to schedule audio events, and use these Tulip callbacks for less important events like updating the screen. For exanple, a drum machine should use AMY's `sequence` command to schedule the notes to play, but using the `tulip.seq_add_callback` API to update the "beat ticker" display in Tulip. See how we do this in the [`drums`](https://github.com/shorepine/tulipcc/blob/main/tulip/shared/py/drums.py) app.
+For an example of a 16 position 1/8th note drum machine, `divider` is 8 and `length` is 16. For a 8 note long quarter note pattern, `divider` is 4 and `length` is 8. 
 
-To use the lower-precision Python Tulip sequencer callback in your code, you should first register with `slot = tulip.seq_add_callback(my_callback)`. You can remove your callback with `tulip.seq_remove_callback(slot)`.  You can remove all callbacks with `tulip.seq_remove_callbacks()`. We support up to 8 callbacks running at once. 
+If you don't care about a pattern, you can omit `length` or set it to 1. The sequence will just repeat at the given `divider` note length. For example, if you want a thing to happen every 32nd note, you'd choose a `divider` of 32 and omit `length`.
 
-When adding a callback, there's an optional second parameter to denote a divider on the system level parts-per-quarter timer (currently at 48). If you run `slot = tulip.seq_add_callback(my_callback, 6)`, it would call your function `my_callback` every 6th "tick", so 8 times a quarter note at a PPQ of 48. The default divider is 48, so if you don't set a divider, your callback will activate once a quarter note. 
+You can set `divider` from 1 up to 192 and `length` can be any number you want over 0. You can have multiple sequences running at once, each with different dividers and lengths.
 
-You can set the system-wide BPM (beats, or quarters per minute) with AMY's `amy.send(tempo=120)` or using wrapper `tulip.seq_bpm(bpm)`. You can retrieve the BPM with `tulip.seq_bpm()`.
+Tulip can sequence any Python function, but has special handling for music `note_on`s or `note_off`s. If you're writing a music sequencer we really recommend using the `synth.note_on` type functions for sequencing.
 
-You can see what tick you are on with `tulip.seq_ticks()`. 
+ - **AMY, `synth.note_` musical functions**: Any method we provide or you write that can accept a `sequence` keyword argument will be scheduled using AMY, our underlying synthesizer core. This guarantees that the musical event will happen in perfect time, as the AMY core runs on Tulip on its own set of resources (or even a separate device, if you're using an AMYboard or other external AMY chip), and cannot be interrupted by things happening elsewhere in Tulip. Our `synth` methods -- `PatchSynth`, `DrumSynth` etc -- all support this no latency protocol. If you're writing your own music generating methods, make sure they accept `sequence` and pass that along to `synth` or `amy.send()`. 
 
-See the example `world.download('seq.py','bwhitman')` on Tulip World for an example of using the music clock, or the [`drums`](https://github.com/shorepine/tulipcc/blob/main/tulip/shared/py/drums.py) included app.
+ - **Any other Python function**: for example, if you want to update the display to show a LED animation as a pattern plays -- are scheduled using the same API. But they have two constraints: (1) depending on how busy Tulip is, these messages may be delayed up to 100ms and (2) you can only schedule up to 8 non-musical callback functions in Tulip. Try to schedule just one non-musical callback in your app at your note length and do all your graphical updates there. (For example, if your drum machine is `Sequence(8, 16)`, use `Sequence(8,1)` for your graphical update code -- it will be called every 1/8th note, in time with the drum pattern.)
+
+Using our sequencer allows you to keep rock solid music timing but also schedule complex graphical or other updates that won't be audible if they're slightly delayed using the same `Sequence` API. See how we do this in the [`drums`](https://github.com/shorepine/tulipcc/blob/main/tulip/shared/py/drums.py) app.
+
+To use the music sequencer, use `seq = sequencer.Sequence(divider, length)`. Then add new events using `seq.add(position, function, [args])`. `position` is the position within the pattern to schedule `function` in. In the drum machine example, you set up a pattern of 16 1/8th notes, so index 0 would be the first hit, and 15 the last). You lastly pass whatever arguments you want to give to that function. `synth.note_on` takes 2 - a note number and a velocity. You can optionally pass other parameters like `pan=0.1` as keyword arguments. 
+
+
+`seq.add()` returns the event that was added. You can keep this event around to later update or remove an individual event. `e = seq.add(0, func)` can then be used to update the sequence with a new function: `e.update(0, new_func)` or remove it with: `e.remove()`.
+
+Here's an example:
+
+```python
+import sequencer
+syn = synth.PatchSynth(1, 0) # make a synthesizer to control
+
+arp_notes = [48,50,52,49,56,58,60,57]
+
+def print_every_other_note(x):
+    print("hit! %d" %(x))
+
+music_seq= sequencer.Sequence(8, 16) # 1/8th notes, 16 of them
+print_seq= sequencer.Sequence(8) # every 1/8th note
+for i in range(16):
+    # At index i, schedule a note on for the synth, with parameters (arp_notes[i%8], 1)
+    music_seq.add(i, syn.note_on, [arp_notes[i%8], 1])
+
+# Every 1/8th note print the current tick
+print_seq.add(0, print_every_other_note)
+
+def stop():
+    music_seq.clear() # Removes all scheduled notes from this sequence
+    print_seq.clear() # Removes all scheduled notes from this sequence
+    syn.release() # Stops the synth
+```
+
+
+You can set or see the system-wide BPM (beats, or quarters per minute) with AMY's `sequencer.tempo(120)`
 
 **See the [music tutorial](music.md) for a LOT more information on music in Tulip.**
 
@@ -519,6 +607,8 @@ These mappings will get reset to default on boot. If you want to save them, put 
 You can set up your own MIDI callbacks in your own programs. You can call `midi.add_callback(function)`, which will call your `function` with a list of a (2 or 3-byte) MIDI message. These callbacks will get called alongside the default MIDI callback (that plays synth notes on MIDI in). You can stop the default MIDI callback with `midi.stop_default_callback()` and start it again with `midi.start_default_callback()`. 
 
 On Tulip Desktop, MIDI works on macOS 11.0 (Big Sur, released 2020) and later ports using the "IAC" MIDI bus. (It does not yet work at all on Linux or Windows.) This lets you send and receive MIDI with Tulip to any program running on the same computer. If you don't see "IAC" in your MIDI programs' list of MIDI ports, enable it by opening Audio MIDI Setup, then showing MIDI Studio, double click on the "IAC Driver" icon, and ensure it is set to "Device is online." 
+
+On Tulip Web, MIDI works in many browsers, but not Safari. 
 
 You can also send MIDI messages "locally", e.g. to a running Tulip program that is expecting hardware MIDI input, via `tulip.midi_local()`
 
@@ -585,7 +675,7 @@ tulip.display_stop() # Tulip will still run
 tulip.display_start()
 
 # Sets a frame callback python function to run every frame 
-# See the Game class below for an easier way to make games
+# See the game mode in UIScreen for an easier way to make games
 game_data = {"frame_count": 0, "score": 0}
 def game_loop(data):
     update_inputs(data)
@@ -720,7 +810,6 @@ tulip.tfb_stop()
 tulip.tfb_start()
 
 # If you want to keep the existing TFB around, you can save it to a temporary buffer and recall it
-# This is used in the Game() class to keep the REPL around after running a game, and the editor
 tulip.tfb_save()
 tulip.tfb_restore()
 
@@ -774,30 +863,7 @@ for c in tulip.collisions():
 tulip.sprite_clear()
 ```
 
-## Convenience classes for sprites and games
-
-We provide a few classes to make it easier to make games and work with sprites, `Sprite`, `Player`, and `Game`.
-
-```python
-def game_loop(game):
-    # game.X available
-
-# make your game a subclass of Game. This will set up the display, reset the sprites, etc, and provide a quit()
-class MyGame(Game):
-    def __init__(self):
-        # debug=True will keep the TFB on the screen and not remove sprites/BG after finishing
-        super().init(debug=False)
-        # .. game setup stuff
-        tulip.frame_callback(game_loop, self)
-
-game = MyGame()
-try:
-    while game.run:
-        time.sleep_ms(100)
-except KeyboardInterrupt:
-    game.quit() # will clean up 
-
-```
+## Convenience classes for sprites 
 
 You can access sprites using the `tulip_sprite_X` commands, or use our convenience `Sprite` class to manage memory and IDs for you:
 
@@ -829,7 +895,7 @@ p.load("me.png", 32, 32)
 p.joy_move() # will update the position based on the joystick
 ```
 
-See `world.download('planet_boing')` for a fleshed out example of using the `Game` and `Sprite` classes.
+See `planet_boing` in `/sys/ex/` for a fleshed out example of using the `Game` and `Sprite` classes.
 
 # Can you help? 
 

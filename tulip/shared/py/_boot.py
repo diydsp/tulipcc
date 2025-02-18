@@ -1,8 +1,15 @@
 import gc
 import uos
-import tulip, sys, midi, amy, alles, world
+import tulip, sys, midi, synth, amy, world, alles, sequencer
 from upysh import *
-from tulip import edit, run
+from tulip import edit, run, board
+if board()=="WEB":
+    def webnyi():
+        return "This function is not available on Tulip Web"
+    import world_web as world
+    input = webnyi()
+else:
+    import world
 
 # This _boot runs both desktop and esp32s3
 
@@ -58,6 +65,22 @@ except ImportError:
         sys.print_exception(e)
         # Probably iOS
         cd(tulip.app_path())
+
+# Make sure user/lib exists and add it to sys.path
+libdir = tulip.root_dir()+"user/lib"
+if(not tulip.exists(libdir)):
+    mkdir(libdir)
+sys.path.append(libdir)
+
+# Remove other ones
+try:
+    sys.path.remove('/lib')
+except ValueError:
+    pass
+try:
+    sys.path.remove('~/.micropython/lib')
+except ValueError:
+    pass
 
 gc.collect()
 
