@@ -287,25 +287,21 @@ def seq_transport_cmd( cmd ):
         if seq_edit["transport"] == "playing":
             seq_edit["transport"] = "paused"
             amy.send(tempo=0) # literally pause seq
+            #amy.send(reset=amy.RESET_TIMEBASE)  # testing reset seq here
 
         elif seq_edit["transport"] == "paused":
             seq_edit["transport"] = "playing"
 
-            # running in this order causes delays in playback resuming
-            # tulip.seq_ticks() doesn't reset to 0
-            #amy.send(reset=amy.RESET_TIMEBASE)  # reset seq
-            #amy.send(tempo=seq_edit["tempo"])   # unpause seq   
-
-            # running in this order also causes delays in playback resuming
-            # tulip.seq_ticks() doesn't reset to 0
+            # testing reset-before-restore-tempo
+            amy.send(reset=amy.RESET_TIMEBASE)  # reset seq
             amy.send(tempo=seq_edit["tempo"])   # unpause seq   
-            #amy.send(reset=amy.RESET_TIMEBASE)  # reset seq
 
-            # running in this order causes 
+            # testing restore-tempo_before_reset
             #amy.send(tempo=seq_edit["tempo"])   # unpause seq   
+            #amy.send(reset=amy.RESET_TIMEBASE)  # reset seq
 
         else:
-            seq_edit["transport"] == "paused"
+            seq_edit["transport"] = "paused"
             amy.send(tempo=0) # literally pause seq
     print(f'transport: {seq_edit["transport"]}')
 
@@ -732,7 +728,11 @@ amy.send(voices='0,1,2,3', load_patch=1)
 #amy.send(voices=1, note=55, vel=.5, sequence= "%d,%d,%d" % (0, 48 * 4, 999) )
 #amy.send(wave=amy.PCM, patch=35,feedback=.5) 
 #amy.send(osc=0, note=50, vel= 1)
-midi.config.add_synth(channel=5, num_voices=1, patch_number=114)
+
+# midi.config.add_synth(channel=5, num_voices=1, patch_number=114)
+# add_synth(patch_number=..) is deprecated and will be removed.  Use add_synth(PatchSynth(patch_number=..)) instead.
+#midi.config.add_synth( midi.PatchSynth( patch_number=114) )
+midi.config.add_synth( midi.PatchSynth(patch_number=114), channel=5)
 
 music_seq = tulpy_seq.Sequence( 4 ) # every quarter note
 music_seq.add(0, beat_callback )  #  update the running rabbit every quarter note
