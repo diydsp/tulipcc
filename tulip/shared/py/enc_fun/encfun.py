@@ -250,6 +250,8 @@ reducer_xy_pos = Reducer()  # for position encoders
 reducer_xy_sel = Reducer()  # for selection encoders
 reducer_xy_mod = Reducer()  # for moving position, and note number
 
+
+
 def beat_callback(t):
     global app
 
@@ -595,7 +597,7 @@ def rotate_notes_in_time( d, grid, note_move_dx ):
    # ------
     # Handle Input Starts Here
     # ------
-def handle_input( d ):
+def refactored_handle_input( d ):
     
     enc_butts = enc.read_all_buttons()
     enc_butts = [1-x for x in enc_butts]  # rev polarity
@@ -735,12 +737,20 @@ def game_loop(d):
 
     global rabbit_h,rabbit_w,WIDTH,HEIGHT,ringing_pan
 
+    #print(f"game_loop called with d: {d}")  # Debugging!
+
 
     # ------
     # Handle Input Starts Here
     # ------
 
-    handle_input( d )
+    app = get_app()
+    if not app:
+        print('App instance not found')
+        return
+
+    app.input_handler.handle_input()
+
 
 
     # ------
@@ -762,7 +772,48 @@ def game_loop(d):
 # initialize
 amy.reset( amy.RESET_SEQUENCER )
 start_time = tulip.ticks_ms()  # do this right before takeoff...
-tulip.frame_callback(game_loop, seq_edit)   # Register the frame callback and data
+
+class InputHandler:
+    def __init__(self,app):
+        self.app = app
+        # self.button_mgr = app.button_mgr
+        # self.grid = app.grid
+        # self.button_mgr = app.button_mgr
+
+    def handle_input(self):
+        #print(f'handle_input')  
+        refactored_handle_input( seq_edit ) 
+
+
+        #self.grid.move_cursor(1, 0)  # No self.app needed!
+
+
+# Global registry for storing the app instance
+APP_INSTANCE = None
+def get_app():
+    """Return the global app instance"""
+    return APP_INSTANCE
+
+class MelodyEditorApp:
+    def __init__(self):
+        global APP_INSTANCE
+        APP_INSTANCE = self   
+        
+        self.input_handler = InputHandler( self )
+
+        self.running = True
+
+
+    def run(self):
+        tulip.frame_callback( game_loop, seq_edit )
+
+
+app = MelodyEditorApp()
+app.run()
+
+#tulip.frame_callback(game_loop, seq_edit)   # Register the frame callback and data
+
+
 amy.send(voices='0,1,2,3', load_patch=1)
 #amy.send(voices=0, note=48, vel=.5)
 #amy.send(voices=1, note=55, vel=.5, sequence= "%d,%d,%d" % (0, 48 * 4, 999) )
