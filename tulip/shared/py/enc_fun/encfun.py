@@ -307,11 +307,16 @@ def seq_transport_cmd( cmd ):
 
 def seq_cursor( dir ):
 
-    if dir == "up": reducer_xy_pos.delta_y(-1)
-    elif dir == "down": reducer_xy_pos.delta_y(1)
-    elif dir == "left": reducer_xy_pos.delta_x(-1)
-    elif dir == "right": reducer_xy_pos.delta_x(1)
-    else: print("unhandled cursor dir: %s" % (dir))
+    if dir == "up": 
+        reducer_xy_pos.delta_y(-1)
+    elif dir == "down": 
+        reducer_xy_pos.delta_y(1)
+    elif dir == "left": 
+        reducer_xy_pos.delta_x(-1)
+    elif dir == "right": 
+        reducer_xy_pos.delta_x(1)
+    else: 
+        print("unhandled cursor dir: %s" % (dir))
 
 patch_x = 25
 patch_y = 200 + 32 * 1
@@ -334,8 +339,9 @@ def process_key( key ):
 
     tulip_keys = tulip.keys()
 
-    # space
-    if key == 32: seq_transport_cmd( "toggle")        
+    # space bar
+    if key == 32: 
+        seq_transport_cmd( "toggle")        
         
     # cursor keys
     elif key == 259:  # up
@@ -343,15 +349,21 @@ def process_key( key ):
     elif key == 258:  # down
         patch_delta(-1)
 
-    elif key == 260: seq_cursor("left")  
-    elif key == 261: seq_cursor("right") 
+    elif key == 260: 
+        seq_cursor("left")  
+    elif key == 261: 
+        seq_cursor("right") 
 
     # esc
-    #if key == 0x29: 
+    elif key == 0x29: 
+        print("esc")
+        pass
 
     # page up/down
-    elif key== 25:seq_tempo_delta(1)
-    elif key == 22:seq_tempo_delta(-1)
+    elif key== 25:
+        seq_tempo_delta(1)
+    elif key == 22:
+        seq_tempo_delta(-1)
 
     elif key == 43:   # tab -> tap tempo?
         pass
@@ -393,7 +405,7 @@ def xaxis_note_select( d, delta ):
             note_dist = x_comp**2 + y_comp**2
             min_dist, closest_note = update_closest_note(note_dist,min_dist,note,closest_note)
 
-    if closest_note != None:
+    if closest_note is not None:
         return closest_note
 
     # 2. first find closest note in this row
@@ -427,7 +439,7 @@ def yaxis_note_select( d, delta ):
             note_dist = y_comp**2
             min_dist, closest_note = update_closest_note(note_dist,min_dist,note,closest_note)
     
-    if closest_note != None:
+    if closest_note is not None:
         return closest_note
 
     # 2. seek closest note from curs x position, but not including any currently at the cursor's row.
@@ -445,7 +457,7 @@ def yaxis_note_select( d, delta ):
             note_dist = x_comp**2 + y_comp**2
             min_dist, closest_note = update_closest_note(note_dist,min_dist,note,closest_note)
 
-    if closest_note != None:
+    if closest_note is not None:
         return closest_note
 
     # 3. find distance between this note and all notes
@@ -550,7 +562,7 @@ def move_note_in_pitch( d, grid, move_note_enc_delta, enc_butts ):
 def select_note_in_time( d, grid, note_sel_dx ):    
     nearest_note = xaxis_note_select( d, note_sel_dx )   
     #print(f'nearest_note: {nearest_note}')    
-    if nearest_note != None:
+    if nearest_note is not None:
         d["x"] = nearest_note.pos   
         d["y"] = 48 + grid.rows - nearest_note.note_num
         return True, True #
@@ -582,7 +594,6 @@ def rotate_notes_in_time( d, grid, note_move_dx ):
   
 
 
-
 # map encoders to functions
 ENC_MOVE_CURS_XPOS = 7
 ENC_NOTE_SEEK_LR   = 6
@@ -597,12 +608,18 @@ NEW_NOTE_BUTTON1  = 0
 def game_loop(d):
 
     global rabbit_h,rabbit_w,WIDTH,HEIGHT,ringing_pan
-    
+
+
+    # ------
+    # Handle Input Starts Here
+    # ------
+
+
     enc_butts = enc.read_all_buttons()
     enc_butts = [1-x for x in enc_butts]  # rev polarity
 
     # place musical note
-    if button_mgr.note_add_down_get() == False \
+    if not button_mgr.note_add_down_get() \
         and enc_butts[NEW_NOTE_BUTTON1] == 1:
             button_mgr.note_add_down_set(True)
 
@@ -683,7 +700,7 @@ def game_loop(d):
             #print(f'v_note_sel_delta: {note_sel_dy}')
             nearest_note = yaxis_note_select( d, note_sel_dy )   
             #print(f'nearest_note: {nearest_note}, pos={nearest_note.pos}, note_num={nearest_note.note_num}, vel={nearest_note.vel}')    
-            if nearest_note != None:
+            if nearest_note is not None:
                 d["x"] = nearest_note.pos   
                 d["y"] = 48 + grid.rows - nearest_note.note_num
                 redraw_cursor_plox = 1
@@ -708,7 +725,7 @@ def game_loop(d):
 
 
     # New note button released
-    if button_mgr.note_add_down_get() == True and \
+    if button_mgr.note_add_down_get() and \
         enc_butts[NEW_NOTE_BUTTON1] == 0:
             button_mgr.note_add_down_set(False)
 
@@ -717,6 +734,13 @@ def game_loop(d):
         g_x = int(random.random() * WIDTH)
         g_y = int(random.random() * HEIGHT)    
         tulip.bg_pixel(g_x,g_y,random.choice(grass_colors))
+
+
+    # ------
+    # Handle Input Ends Here
+    # ------
+
+
 
 
 # initialize
