@@ -592,29 +592,11 @@ def rotate_notes_in_time( d, grid, note_move_dx ):
         rotate_note_in_time( grid, note, note_move_dx )
     
   
-
-
-# map encoders to functions
-ENC_MOVE_CURS_XPOS = 7
-ENC_NOTE_SEEK_LR   = 6
-ENC_MOVE_NOTE_POS = 5
-ENC_TIME_JOG      = 4
-ENC_MOVE_NOTE_NUM = 2
-ENC_NOTE_SEEK_UD   = 1
-ENC_MOVE_CURS_YPOS = 0
-NEW_NOTE_BUTTON1  = 0
-
-# This is called every frame by the GPU.
-def game_loop(d):
-
-    global rabbit_h,rabbit_w,WIDTH,HEIGHT,ringing_pan
-
-
-    # ------
+   # ------
     # Handle Input Starts Here
     # ------
-
-
+def handle_input( d ):
+    
     enc_butts = enc.read_all_buttons()
     enc_butts = [1-x for x in enc_butts]  # rev polarity
 
@@ -729,6 +711,43 @@ def game_loop(d):
         enc_butts[NEW_NOTE_BUTTON1] == 0:
             button_mgr.note_add_down_set(False)
 
+
+
+
+    # ------
+    # Handle Input Ends Here
+    # ------
+
+
+
+# map encoders to functions
+ENC_MOVE_CURS_XPOS = 7
+ENC_NOTE_SEEK_LR   = 6
+ENC_MOVE_NOTE_POS = 5
+ENC_TIME_JOG      = 4
+ENC_MOVE_NOTE_NUM = 2
+ENC_NOTE_SEEK_UD   = 1
+ENC_MOVE_CURS_YPOS = 0
+NEW_NOTE_BUTTON1  = 0
+
+# This is called every frame by the GPU.
+def game_loop(d):
+
+    global rabbit_h,rabbit_w,WIDTH,HEIGHT,ringing_pan
+
+
+    # ------
+    # Handle Input Starts Here
+    # ------
+
+    handle_input( d )
+
+
+    # ------
+    # Handle Input Ends Here
+    # ------
+
+
     # fill background with noise pattern
     for i in range(10):
         g_x = int(random.random() * WIDTH)
@@ -736,9 +755,6 @@ def game_loop(d):
         tulip.bg_pixel(g_x,g_y,random.choice(grass_colors))
 
 
-    # ------
-    # Handle Input Ends Here
-    # ------
 
 
 
