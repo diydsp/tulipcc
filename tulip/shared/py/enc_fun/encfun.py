@@ -235,17 +235,6 @@ tulip.sprite_move(1, math.floor(WIDTH/2) - half_rabbit_w, 0)
 tulip.sprite_on(1)
 
 
-note_manager = NoteManager()
-button_mgr = ButtonManager()    
-
-
-
-
-reducer_xy_pos = Reducer()  # for position encoders
-reducer_xy_sel = Reducer()  # for selection encoders
-reducer_xy_mod = Reducer()  # for moving position, and note number
-
-
 
 def beat_callback(t):
     global app
@@ -793,11 +782,21 @@ class MelodyEditorApp:
         global APP_INSTANCE
         APP_INSTANCE = self   
         
+        # major classes
         self.input_handler = InputHandler( self )
+
         self.grid = gfun.Grid(start_x=200, start_y=50, width=700, height=500, palette_index=3,
                  cols=32,  rows=25, visible_quarter_notes=4,seq_ppq = amy.AMY_SEQUENCER_PPQ
                  )
         self.grid.draw()
+
+        self.note_manager = NoteManager()
+
+        self.button_mgr = ButtonManager()    
+
+        self.reducer_xy_pos = Reducer()  # for position encoders
+        self.reducer_xy_sel = Reducer()  # for selection encoders
+        self.reducer_xy_mod = Reducer()  # for moving position, and note number
 
         self.running = True
 
@@ -807,7 +806,15 @@ class MelodyEditorApp:
 
 
 app = MelodyEditorApp()
+
+# these are temporary shortcuts until classes can access them 
 grid = app.grid
+note_manager = app.note_manager
+button_mgr = app.button_mgr
+reducer_xy_pos = app.reducer_xy_pos
+reducer_xy_sel = app.reducer_xy_sel
+reducer_xy_mod = app.reducer_xy_mod
+
 redraw_cursor( seq_edit, grid, color = 1 )
 
 app.run()
