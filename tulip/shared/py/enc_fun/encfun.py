@@ -237,13 +237,8 @@ tulip.sprite_on(1)
 
 note_manager = NoteManager()
 button_mgr = ButtonManager()    
-grid = gfun.Grid(start_x=200, start_y=50, width=700, height=500, palette_index=3,
-                 cols=32,  rows=25, visible_quarter_notes=4,seq_ppq = amy.AMY_SEQUENCER_PPQ,
-#                 seq_ppq=amy.SEQUENCER_PPQ) 
-)
-grid.draw()
 
-redraw_cursor( seq_edit, grid, color = 1 )
+
 
 
 reducer_xy_pos = Reducer()  # for position encoders
@@ -777,8 +772,7 @@ class InputHandler:
     def __init__(self,app):
         self.app = app
         # self.button_mgr = app.button_mgr
-        # self.grid = app.grid
-        # self.button_mgr = app.button_mgr
+        #self.grid = app.grid  # input handler doesn't need to see the grid
 
     def handle_input(self):
         #print(f'handle_input')  
@@ -800,6 +794,10 @@ class MelodyEditorApp:
         APP_INSTANCE = self   
         
         self.input_handler = InputHandler( self )
+        self.grid = gfun.Grid(start_x=200, start_y=50, width=700, height=500, palette_index=3,
+                 cols=32,  rows=25, visible_quarter_notes=4,seq_ppq = amy.AMY_SEQUENCER_PPQ
+                 )
+        self.grid.draw()
 
         self.running = True
 
@@ -809,6 +807,9 @@ class MelodyEditorApp:
 
 
 app = MelodyEditorApp()
+grid = app.grid
+redraw_cursor( seq_edit, grid, color = 1 )
+
 app.run()
 
 #tulip.frame_callback(game_loop, seq_edit)   # Register the frame callback and data
